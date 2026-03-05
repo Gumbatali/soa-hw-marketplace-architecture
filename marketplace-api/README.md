@@ -27,7 +27,7 @@
 docker compose up --build
 ```
 
-Сервис будет доступен на `http://localhost:8080`.
+Сервис будет доступен на `http://localhost:8081`.
 
 ## OpenAPI
 
@@ -40,15 +40,15 @@ docker compose up --build
 ### 1) Зарегистрировать пользователей
 
 ```bash
-curl -s -X POST http://localhost:8080/auth/register \
+curl -s -X POST http://localhost:8081/auth/register \
   -H 'Content-Type: application/json' \
   -d '{"username":"admin","password":"Strong123","role":"ADMIN"}'
 
-curl -s -X POST http://localhost:8080/auth/register \
+curl -s -X POST http://localhost:8081/auth/register \
   -H 'Content-Type: application/json' \
   -d '{"username":"seller1","password":"Strong123","role":"SELLER"}'
 
-curl -s -X POST http://localhost:8080/auth/register \
+curl -s -X POST http://localhost:8081/auth/register \
   -H 'Content-Type: application/json' \
   -d '{"username":"user1","password":"Strong123","role":"USER"}'
 ```
@@ -56,11 +56,11 @@ curl -s -X POST http://localhost:8080/auth/register \
 ### 2) Логин и получение токена
 
 ```bash
-SELLER_TOKEN=$(curl -s -X POST http://localhost:8080/auth/login \
+SELLER_TOKEN=$(curl -s -X POST http://localhost:8081/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"username":"seller1","password":"Strong123"}' | jq -r .access_token)
 
-USER_TOKEN=$(curl -s -X POST http://localhost:8080/auth/login \
+USER_TOKEN=$(curl -s -X POST http://localhost:8081/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"username":"user1","password":"Strong123"}' | jq -r .access_token)
 ```
@@ -68,7 +68,7 @@ USER_TOKEN=$(curl -s -X POST http://localhost:8080/auth/login \
 ### 3) Создать товар (SELLER)
 
 ```bash
-PRODUCT_ID=$(curl -s -X POST http://localhost:8080/products \
+PRODUCT_ID=$(curl -s -X POST http://localhost:8081/products \
   -H "Authorization: Bearer $SELLER_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"name":"Laptop","description":"16GB RAM","price":1200.00,"stock":10,"category":"electronics","status":"ACTIVE"}' | jq -r .id)
@@ -77,7 +77,7 @@ PRODUCT_ID=$(curl -s -X POST http://localhost:8080/products \
 ### 4) Создать промокод
 
 ```bash
-curl -s -X POST http://localhost:8080/promo-codes \
+curl -s -X POST http://localhost:8081/promo-codes \
   -H "Authorization: Bearer $SELLER_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"code":"PROMO10","discount_type":"PERCENTAGE","discount_value":10,"min_order_amount":100,"max_uses":100,"valid_from":"2025-01-01T00:00:00Z","valid_until":"2030-01-01T00:00:00Z","active":true}'
@@ -86,7 +86,7 @@ curl -s -X POST http://localhost:8080/promo-codes \
 ### 5) Создать заказ (USER)
 
 ```bash
-curl -s -X POST http://localhost:8080/orders \
+curl -s -X POST http://localhost:8081/orders \
   -H "Authorization: Bearer $USER_TOKEN" \
   -H 'Content-Type: application/json' \
   -d "{\"items\":[{\"product_id\":\"$PRODUCT_ID\",\"quantity\":2}],\"promo_code\":\"PROMO10\"}"
