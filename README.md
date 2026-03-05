@@ -1,23 +1,177 @@
-# Homework #2: Marketplace (OpenAPI + CRUD)
+# ДЗ2: Marketplace API (OpenAPI + CRUD)
 
-Этот branch (`hw2`) оформлен как прозрачная инструкция к репозиторию: с какой целью делалось ДЗ2, в какой последовательности выполнялись шаги и где в коде реализован каждый пункт требований.
+Эта ветка (`hw2`) — рабочая история выполнения второго домашнего задания: что именно было сделано, в какой последовательности и где это лежит в коде.
 
-## 0) Цель и стек
+## Зачем сделан этот репозиторий
 
-**Цель:** спроектировать и реализовать контрактный REST API маркетплейса с бизнес-логикой заказов.
+Цель задания — спроектировать и реализовать API маркетплейса в контрактном подходе:
+- сначала формализовать контракт (OpenAPI),
+- затем реализовать бизнес-логику,
+- обеспечить воспроизводимый запуск,
+- показать проверяемый результат на E2E и уровне БД.
 
-**Стек реализации:**
+## Ключевые решения
+
+- **Contract-first**: сначала OpenAPI-спецификация, затем код.
+- **REST-ресурсная модель**: `/products`, `/orders`, `/promo-codes`, `/auth`.
+- **Stateless**: каждый защищённый запрос самодостаточен (JWT в каждом запросе).
+- **Единый формат ошибок**: `error_code`, `message`, `details`.
+- **Транзакционные инварианты** для заказов: проверка остатков, резервирование, пересчёты, state transitions.
+
+## Технический стек
+
 - Java 21 + Spring Boot
-- OpenAPI (contract-first) + code generation
+- OpenAPI + code generation
 - PostgreSQL + Flyway
 - JWT (access/refresh)
-- Role-based access (`USER`, `SELLER`, `ADMIN`)
+- Роли: `USER`, `SELLER`, `ADMIN`
 
-**Порт API в этом branch:** `http://localhost:8081`
+Порт API по умолчанию в этой ветке: `http://localhost:8081`.
 
-## 1) Как я делал ДЗ2 (последовательность шагов)
+---
 
-### Шаг 1. Поднять систему
+## Как выполнялось ДЗ (прозрачная последовательность)
+
+### Этап 1. Спецификация Product CRUD
+
+**Что сделано**
+- Описаны endpoint’ы:
+  - `POST /products`
+  - `GET /products/{id}`
+  - `GET /products` (пагинация и фильтрация)
+  - `PUT /products/{id}`
+  - `DELETE /products/{id}` (мягкое удаление)
+
+**Почему так**
+- Это базовый REST CRUD и ожидаемая семантика методов.
+
+**Где смотреть**
+- `marketplace-api/src/main/resources/openapi/marketplace.yaml`
+
+### Этап 2. Формализация схем данных
+
+**Что сделано**
+- Выделены отдельные схемы: `ProductCreate`, `ProductUpdate`, `ProductResponse`.
+- Указаны `required`, `nullable`, `enum`, `format`.
+- Добавлены ограничения полей.
+
+**Почему так**
+- Разделение create/update/response делает контракт понятнее и снижает риск ошибок интеграции.
+
+**Где смотреть**
+- `components/schemas` в `marketplace.yaml`
+
+### Этап 3. Кодогенерация из OpenAPI
+
+**Что сделано**
+- Настроен генератор интерфейсов API и моделей.
+- Ручные DTO для этих контрактов не используются.
+
+**Почему так**
+- Контракт и код не расходятся, сборка воспроизводима одной командой.
+
+**Где смотреть**
+- `marketplace-api/pom.xml` (`openapi-generator-maven-plugin`)
+- `target/generated-sources/openapi`
+
+### Этап 4. PostgreSQL + миграции + базовый CRUD
+
+**Что сделано**
+- Подключён PostgreSQL.
+- Схема заведена через Flyway.
+- Добавлен индекс `products.status`.
+- `DELETE /products/{id}` реализован как `ARCHIVED`.
+
+**Почему так**
+- Выполняются требования задания, плюс это удобнее для аудита/восстановления данных.
+
+**Где смотреть**
+- `marketplace-api/src/main/resources/db/migration/V1__init.sql`
+- `ProductService#deleteProduct`
+
+### Этап 5. Контрактная обработка ошибок
+
+**Что сделано**
+- Единая структура ошибок: `error_code`, `message`, `details`.
+- Коды ошибок синхронизированы с OpenAPI и реализацией.
+
+**Почему так**
+- Клиентам проще обрабатывать ошибки программно и предсказуемо.
+
+**Где смотреть**
+- OpenAPI: `ErrorResponse`, `ErrorCode`
+- Код: `common/error/*`, `web/error/GlobalExceptionHandler.java`
+
+### Этап 6. Контрактная валидация входных данных
+
+**Что сделано**
+- Ограничения зафиксированы в OpenAPI.
+- Невалидные запросы отсекаются до бизнес-логики.
+- Возвращается `VALIDATION_ERROR` с детализацией по полям.
+
+**Почему так**
+- Предсказуемое поведение API и меньше ошибок в доменной логике.
+
+**Где смотреть**
+- `marketplace.yaml` (constraints)
+- generated contracts с `@Valid`
+- `GlobalExceptionHandler`
+
+### Этап 7. Бизнес-логика заказов
+
+**Что сделано**
+- `POST /orders`: rate-limit, active-order guard, проверка каталога и stock, резервирование, snapshot цен, promo-расчёт.
+- `PUT /orders/{id}`: ownership, state check, возврат старых резервов, резервы новых, пересчёт promo.
+- `POST /orders/{id}/cancel`: ownership, допустимые состояния, возврат stock, rollback promo usage.
+
+**Почему так**
+- Все инварианты из ТЗ соблюдаются в транзакциях.
+
+**Где смотреть**
+- `service/OrderService.java`
+- таблицы в `V1__init.sql`
+
+### Этап 8. Логирование API
+
+**Что сделано**
+- JSON-лог каждого запроса.
+- Пишутся поля: `request_id`, `method`, `endpoint`, `status_code`, `duration_ms`, `user_id`, `timestamp`.
+- Для `POST/PUT/DELETE` логируется body с маскированием чувствительных данных.
+- `X-Request-Id` возвращается в ответе.
+
+**Где смотреть**
+- `web/ApiLoggingFilter.java`
+
+### Этап 9. JWT-авторизация
+
+**Что сделано**
+- `/auth/register`, `/auth/login`, `/auth/refresh`.
+- Access и refresh токены.
+- Ошибки: `TOKEN_INVALID`, `TOKEN_EXPIRED`, `REFRESH_TOKEN_INVALID`.
+
+**Почему так**
+- Стандартная модель короткоживущего access и долгоживущего refresh.
+
+**Где смотреть**
+- `service/AuthService.java`
+- `security/JwtService.java`, `JwtAuthenticationFilter.java`, `SecurityConfig.java`
+
+### Этап 10. Ролевая модель доступа
+
+**Что сделано**
+- Реализованы роли `USER`, `SELLER`, `ADMIN`.
+- Ограничения по матрице доступа.
+- `SELLER` управляет только своими товарами через `seller_id`.
+- Проверка владения заказом для user-операций.
+
+**Где смотреть**
+- `security/SecurityConfig.java`
+- `@PreAuthorize` в контроллерах
+- ownership checks в сервисах
+
+---
+
+## Как воспроизвести у себя
 
 ```bash
 cd marketplace-api
@@ -25,156 +179,13 @@ cd marketplace-api
 docker compose up --build
 ```
 
-### Шаг 2. Проверить E2E-цепочку
-
-1. Регистрация/логин пользователей
-2. Создание товара (`SELLER`)
-3. Создание промокода (`SELLER`)
-4. Создание заказа (`USER`)
-5. (опционально) update/cancel заказа
-
-### Шаг 3. Проверить данные в БД через SELECT
-
-```sql
-SELECT id, username, role, created_at FROM users;
-SELECT id, name, stock, status, seller_id FROM products;
-SELECT id, user_id, status, total_amount, discount_amount, promo_code_id FROM orders;
-SELECT id, order_id, product_id, quantity, price_at_order FROM order_items;
-SELECT id, code, current_uses, max_uses, active FROM promo_codes;
-SELECT id, user_id, operation_type, created_at FROM user_operations;
-```
-
-### Шаг 4. Прогнать альтернативные/ошибочные сценарии
-
-- невалидные payload → `VALIDATION_ERROR`
-- недостаток stock → `INSUFFICIENT_STOCK`
-- повторное создание заказа слишком часто → `ORDER_LIMIT_EXCEEDED`
-- запрещённые операции по роли → `ACCESS_DENIED`
-- неверный token → `TOKEN_INVALID` / `TOKEN_EXPIRED`
+API: `http://localhost:8081`
 
 ---
 
-## 2) Как выполнено ДЗ по пунктам требований (1 → 10)
+## E2E: рабочий сквозной сценарий
 
-### 1. OpenAPI CRUD для Product
-
-**Сделано:**
-- `POST /products`
-- `GET /products/{id}`
-- `GET /products` (page/size/status/category)
-- `PUT /products/{id}`
-- `DELETE /products/{id}` (soft delete → `ARCHIVED`)
-
-**Где:** `marketplace-api/src/main/resources/openapi/marketplace.yaml`
-
-### 2. Схемы данных в OpenAPI
-
-**Сделано:**
-- `ProductCreate`, `ProductUpdate`, `ProductResponse`
-- `required`, `nullable`, `enum`
-- `format` для `decimal`/`date-time`
-- ограничения длины/минимумов
-
-**Где:** `components/schemas` в `marketplace.yaml`
-
-### 3. Code generation из OpenAPI
-
-**Сделано:**
-- генерация интерфейсов контроллеров и DTO одной сборкой Maven
-- ручные request/response DTO не используются
-
-**Где:**
-- `marketplace-api/pom.xml` (`openapi-generator-maven-plugin`)
-- generated sources в `target/generated-sources/openapi`
-
-### 4. PostgreSQL + базовый CRUD
-
-**Сделано:**
-- PostgreSQL подключён
-- миграции через Flyway
-- индекс `products.status`
-- auto `created_at/updated_at`
-- soft delete продукта через статус `ARCHIVED`
-
-**Где:**
-- `marketplace-api/src/main/resources/db/migration/V1__init.sql`
-- `ProductService#deleteProduct`
-
-### 5. Контрактная обработка ошибок
-
-**Сделано:**
-- единый формат: `error_code`, `message`, `details`
-- коды ошибок из ТЗ заведены в контракте и в обработчике
-
-**Где:**
-- OpenAPI: `ErrorResponse` + `ErrorCode`
-- код: `common/error/*`, `web/error/GlobalExceptionHandler.java`
-
-### 6. Контрактная валидация входных данных
-
-**Сделано:**
-- ограничения полей заданы в OpenAPI и применяются до бизнес-логики
-- при нарушениях возвращается `VALIDATION_ERROR` + детализация по полям
-
-**Где:**
-- `marketplace.yaml` (constraints)
-- generated `@Valid` contracts
-- `GlobalExceptionHandler`
-
-### 7. Сложная бизнес-логика заказов
-
-**Сделано:**
-- create/update/cancel заказа по заданным инвариантам
-- rate limit через `user_operations`
-- active order guard
-- stock check + reserve в транзакции
-- snapshot цен в `order_items.price_at_order`
-- promo logic + пересчёт + rollback uses при отмене/условиях
-- state transition checks
-
-**Где:**
-- `service/OrderService.java`
-- схема таблиц в `V1__init.sql`
-
-### 8. Логирование API
-
-**Сделано:**
-- JSON-лог на каждый запрос
-- `request_id`, `method`, `endpoint`, `status_code`, `duration_ms`, `user_id`, `timestamp`
-- для mutating запросов логируется body (с маскированием чувствительных полей)
-- `X-Request-Id` в ответе
-
-**Где:** `web/ApiLoggingFilter.java`
-
-### 9. JWT-авторизация
-
-**Сделано:**
-- `/auth/register`, `/auth/login`, `/auth/refresh`
-- access + refresh token
-- `TOKEN_INVALID`, `TOKEN_EXPIRED`, `REFRESH_TOKEN_INVALID`
-
-**Где:**
-- `service/AuthService.java`
-- `security/JwtService.java`, `JwtAuthenticationFilter.java`, `SecurityConfig.java`
-
-### 10. Ролевая модель доступа
-
-**Сделано:**
-- роли: `USER`, `SELLER`, `ADMIN`
-- ограничения по матрице доступа
-- seller управляет только своими товарами (`seller_id`)
-- ownership checks по заказам
-
-**Где:**
-- `security/SecurityConfig.java`
-- `@PreAuthorize` в контроллерах
-- ownership-проверки в сервисах
-
----
-
-## 3) E2E-команды (готовый сценарий для воспроизведения)
-
-### Регистрация + логин
+### 1) Регистрация и логин
 
 ```bash
 curl -X POST http://localhost:8081/auth/register -H 'Content-Type: application/json' -d '{"username":"admin","password":"Strong123","role":"ADMIN"}'
@@ -185,7 +196,7 @@ SELLER_TOKEN=$(curl -s -X POST http://localhost:8081/auth/login -H 'Content-Type
 USER_TOKEN=$(curl -s -X POST http://localhost:8081/auth/login -H 'Content-Type: application/json' -d '{"username":"user1","password":"Strong123"}' | jq -r .access_token)
 ```
 
-### Product + Promo + Order
+### 2) Создание товара, промокода, заказа
 
 ```bash
 PRODUCT_ID=$(curl -s -X POST http://localhost:8081/products \
@@ -204,24 +215,34 @@ ORDER_ID=$(curl -s -X POST http://localhost:8081/orders \
   -d "{\"items\":[{\"product_id\":\"$PRODUCT_ID\",\"quantity\":2}],\"promo_code\":\"PROMO10\"}" | jq -r .id)
 ```
 
+### 3) Проверка состояния БД
+
+```sql
+SELECT id, username, role, created_at FROM users;
+SELECT id, name, stock, status, seller_id FROM products;
+SELECT id, user_id, status, total_amount, discount_amount, promo_code_id FROM orders;
+SELECT id, order_id, product_id, quantity, price_at_order FROM order_items;
+SELECT id, code, current_uses, max_uses, active FROM promo_codes;
+SELECT id, user_id, operation_type, created_at FROM user_operations;
+```
+
 ---
 
-## 4) Теоретические акценты (почему решения именно такие)
+## Негативные сценарии, которые стоит прогнать
 
-- REST — архитектурный стиль: важно соблюдать семантику методов/кодов, а не просто «HTTP + JSON».
-- Stateless упрощает масштабирование: сервер не хранит сессию между запросами.
-- Идемпотентность (`PUT`, `DELETE`) снижает риски при ретраях.
-- Contract-first (OpenAPI) уменьшает расхождения между клиентом и сервером.
-- Синхронные вызовы удобны, но увеличивают связанность и чувствительность к задержкам/отказам.
-- Для high-load inter-service взаимодействий часто нужны async/event-driven паттерны.
+- Невалидный payload → `VALIDATION_ERROR`
+- Недостаточный stock → `INSUFFICIENT_STOCK`
+- Слишком частое создание/обновление заказа → `ORDER_LIMIT_EXCEEDED`
+- Недостаточные права → `ACCESS_DENIED`
+- Невалидный/просроченный access token → `TOKEN_INVALID` / `TOKEN_EXPIRED`
 
 ---
 
-## 5) Навигация по коду
+## Карта кода
 
-- OpenAPI контракт: `marketplace-api/src/main/resources/openapi/marketplace.yaml`
+- OpenAPI: `marketplace-api/src/main/resources/openapi/marketplace.yaml`
 - Миграции: `marketplace-api/src/main/resources/db/migration/V1__init.sql`
-- JWT/Security/RBAC: `marketplace-api/src/main/java/com/gumbatali/marketplace/security/*`
+- Security/JWT/RBAC: `marketplace-api/src/main/java/com/gumbatali/marketplace/security/*`
 - Ошибки: `marketplace-api/src/main/java/com/gumbatali/marketplace/web/error/GlobalExceptionHandler.java`
-- Бизнес-логика заказов: `marketplace-api/src/main/java/com/gumbatali/marketplace/service/OrderService.java`
-- API logging: `marketplace-api/src/main/java/com/gumbatali/marketplace/web/ApiLoggingFilter.java`
+- Логика заказов: `marketplace-api/src/main/java/com/gumbatali/marketplace/service/OrderService.java`
+- Логирование API: `marketplace-api/src/main/java/com/gumbatali/marketplace/web/ApiLoggingFilter.java`
