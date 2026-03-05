@@ -3,7 +3,8 @@ WORKDIR /app
 COPY pom.xml mvnw mvnw.cmd ./
 COPY .mvn .mvn
 COPY src src
-RUN ./mvnw -q -DskipTests package
+# maven:* image sets MAVEN_CONFIG=/root/.m2; old wrapper scripts may pass it as CLI arg.
+RUN MAVEN_CONFIG="" ./mvnw -q -DskipTests package
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app
