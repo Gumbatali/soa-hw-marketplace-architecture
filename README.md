@@ -1,271 +1,108 @@
-# 🏗 Marketplace Architecture  
-**C4 + инициализация сервиса**
+# Homework #2: Marketplace API (OpenAPI + CRUD)
 
----
+Этот branch (`hw2`) подготовлен под защиту ДЗ2: контрактный REST API маркетплейса с валидацией, бизнес-логикой заказов, PostgreSQL/Flyway и JWT/RBAC.
 
-## 📌 Описание проекта
+## Что проверяется на защите
 
-В рамках задания спроектирована архитектура цифрового маркетплейса — платформы, на которой:
+- запуск системы через Docker
+- E2E-запросы через всю цепочку
+- проверка факта записи данных через `SELECT` в БД
+- альтернативные/некорректные сценарии
+- объяснение архитектурных решений в коде
 
-- продавцы размещают товары;
-- покупатели просматривают персонализированную ленту;
-- оформляют заказы через корзину;
-- оплачивают их;
-- получают уведомления о статусах.
-
-Проект включает:
-
-- C4 Container-диаграмму;
-- описание доменов и их ответственности;
-- альтернативные варианты декомпозиции;
-- анализ trade-offs;
-- поднятый сервис в Docker с health-check.
-
----
-
-# 🎯 Цели архитектуры
-
-Система обеспечивает:
-
-- персонализированную выдачу товаров;
-- управление каталогом;
-- управление пользователями;
-- оформление заказов только через корзину;
-- расчёт и учёт платежей;
-- отправку уведомлений о статусах заказов.
-
----
-
-# 🧱 Архитектурный подход
-
-Выбран **микросервисный подход (SOA / Microservices)**.
-
-Причины выбора:
-
-- чёткое разделение доменов;
-- независимость сервисов;
-- отсутствие разделяемых баз данных;
-- возможность масштабирования;
-- демонстрация архитектурной зрелости.
-
----
-
-# 🧩 Домены и их ответственность
-
-## 1️⃣ User Domain
-- хранение пользователей (покупатели, продавцы);
-- роли;
-- предпочтения для персонализации.
-
-## 2️⃣ Catalog Domain
-- управление товарами;
-- цены;
-- наличие.
-
-## 3️⃣ Feed Domain
-- персонализированная лента товаров;
-- использование предпочтений пользователя;
-- кэширование.
-
-Персонализация реализуется rule-based логикой:
-- категории интересов;
-- популярность;
-- история действий.
-
-## 4️⃣ Cart Domain
-- управление корзиной;
-- добавление и удаление товаров;
-- единственная точка создания заказа.
-
-Заказ создаётся только через корзину.
-
-## 5️⃣ Order Domain
-- жизненный цикл заказа;
-- смена статусов;
-- публикация событий.
-
-## 6️⃣ Payment Domain
-- учёт платежей;
-- попытки оплаты;
-- таймаут ожидания оплаты;
-- публикация событий успешной или просроченной оплаты.
-
-## 7️⃣ Notification Domain
-- отправка уведомлений при изменении статуса заказа.
-
----
-
-# 🧠 Распределение доменов по сервисам
-
-| Сервис | Домен | Ответственность |
-|--------|--------|----------------|
-| User Service | User | Пользователи и роли |
-| Catalog Service | Catalog | Товары |
-| Feed Service | Feed | Персонализация |
-| Cart Service | Cart | Корзина |
-| Order Service | Order | Заказы |
-| Payment Service | Payment | Платежи |
-| Notification Service | Notification | Уведомления |
-
-Логика разбиения:
-- каждый сервис соответствует одному домену;
-- минимальная связанность;
-- отсутствие shared database.
-
----
-
-# 🗄 Границы владения данными
-
-Каждый сервис владеет собственной базой данных:
-
-- User Service → User DB  
-- Catalog Service → Catalog DB  
-- Cart Service → Cart DB  
-- Order Service → Order DB  
-- Payment Service → Payment DB  
-
-Разделяемых баз данных нет.
-
-Это повышает автономность сервисов и снижает связанность.
-
----
-
-# 🔄 Взаимодействие сервисов
-
-## Синхронное взаимодействие (REST)
-
-- Web → API Gateway  
-- Gateway → backend-сервисы  
-- Feed → User и Catalog  
-- Cart → Catalog  
-- Cart → Order  
-
-## Асинхронное взаимодействие (Kafka)
-
-- Order публикует события OrderCreated / OrderStatusChanged  
-- Payment подписывается на OrderCreated  
-- Payment публикует PaymentSucceeded / PaymentExpired  
-- Order подписывается на события оплаты  
-- Notification подписывается на события изменения статуса  
-
-Kafka используется для реализации событийной модели и слабой связанности сервисов.
-
----
-
-# ⚡ Кэширование
-
-Redis используется для:
-
-- кэширования каталога;
-- кэширования персонализированной ленты.
-
-Это снижает нагрузку на базы данных и уменьшает latency.
-
----
-
-# 📊 Observability
-
-Добавлены:
-
-- Prometheus — сбор метрик;
-- Grafana — визуализация.
-
-Каждый сервис может экспортировать endpoint `/metrics`.
-
-Это повышает управляемость и устойчивость системы.
-
----
-
-# 🧭 C4 Диаграммы
-
-В проекте представлены две версии:
-
-1. **Simple Version** — базовая Container диаграмма.
-2. **Extended Version** — расширенная архитектура с Kafka, Redis и Observability.
-
----
-
-# 🐳 Реализованный сервис
-
-Реализован **Catalog Service** на FastAPI.
-
-Он:
-
-- успешно запускается;
-- поднимается в Docker;
-- имеет endpoint `/health`;
-- возвращает `200 OK`.
-
----
-
-# 🚀 Запуск проекта
+## Быстрый запуск
 
 ```bash
+cd marketplace-api
+./mvnw clean test
+
 docker compose up --build
 ```
 
-Проверка:
+API: `http://localhost:8080`
+
+## Покрытие требований (чек-лист под баллы)
+
+| Требование | Статус | Где смотреть |
+|---|---|---|
+| OpenAPI CRUD для Product | done | `marketplace-api/src/main/resources/openapi/marketplace.yaml` |
+| Product схемы (`ProductCreate`/`ProductUpdate`/`ProductResponse`) | done | OpenAPI components/schemas |
+| Codegen из OpenAPI, без ручных DTO | done | `marketplace-api/pom.xml` + generated APIs/models |
+| PostgreSQL + Flyway + soft delete + index(status) | done | `db/migration/V1__init.sql` + `DELETE /products/{id}` |
+| Единый контракт ошибок | done | `ErrorResponse` в OpenAPI + `GlobalExceptionHandler` |
+| Контрактная валидация | done | OpenAPI constraints + `@Valid` generated contracts |
+| Сложная логика заказов | done | `OrderService` (create/update/cancel, stock/promo/rate-limit) |
+| JSON API logging + `X-Request-Id` | done | `ApiLoggingFilter` |
+| JWT access/refresh | done | `/auth/*`, `JwtService`, `JwtAuthenticationFilter` |
+| RBAC USER/SELLER/ADMIN | done | `SecurityConfig`, `@PreAuthorize`, ownership checks |
+
+## E2E-сценарий для демонстрации
+
+### 1) Регистрация и логин
 
 ```bash
-curl http://localhost:8000/health
+curl -X POST http://localhost:8080/auth/register -H 'Content-Type: application/json' -d '{"username":"admin","password":"Strong123","role":"ADMIN"}'
+curl -X POST http://localhost:8080/auth/register -H 'Content-Type: application/json' -d '{"username":"seller1","password":"Strong123","role":"SELLER"}'
+curl -X POST http://localhost:8080/auth/register -H 'Content-Type: application/json' -d '{"username":"user1","password":"Strong123","role":"USER"}'
+
+SELLER_TOKEN=$(curl -s -X POST http://localhost:8080/auth/login -H 'Content-Type: application/json' -d '{"username":"seller1","password":"Strong123"}' | jq -r .access_token)
+USER_TOKEN=$(curl -s -X POST http://localhost:8080/auth/login -H 'Content-Type: application/json' -d '{"username":"user1","password":"Strong123"}' | jq -r .access_token)
 ```
 
-Ответ:
+### 2) Продукт + промокод + заказ
 
-```json
-{"status":"ok"}
+```bash
+PRODUCT_ID=$(curl -s -X POST http://localhost:8080/products \
+  -H "Authorization: Bearer $SELLER_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Laptop","description":"16GB RAM","price":1200.00,"stock":10,"category":"electronics","status":"ACTIVE"}' | jq -r .id)
+
+curl -X POST http://localhost:8080/promo-codes \
+  -H "Authorization: Bearer $SELLER_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"code":"PROMO10","discount_type":"PERCENTAGE","discount_value":10,"min_order_amount":100,"max_uses":100,"valid_from":"2025-01-01T00:00:00Z","valid_until":"2030-01-01T00:00:00Z","active":true}'
+
+curl -X POST http://localhost:8080/orders \
+  -H "Authorization: Bearer $USER_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d "{\"items\":[{\"product_id\":\"$PRODUCT_ID\",\"quantity\":2}],\"promo_code\":\"PROMO10\"}"
 ```
 
----
+### 3) SQL-подтверждение в БД
 
-# 🧩 Альтернативные варианты декомпозиции
+```sql
+SELECT id, username, role, created_at FROM users;
+SELECT id, name, stock, status, seller_id FROM products;
+SELECT id, user_id, status, total_amount, discount_amount, promo_code_id FROM orders;
+SELECT id, order_id, product_id, quantity, price_at_order FROM order_items;
+SELECT id, code, current_uses, max_uses, active FROM promo_codes;
+SELECT id, user_id, operation_type, created_at FROM user_operations;
+```
 
-## Вариант 1 — Микросервисы (выбранный)
+## Что важно уметь объяснить (коротко и по сути)
 
-Плюсы:
-- масштабируемость;
-- независимые деплои;
-- чёткие границы доменов;
-- отсутствие shared DB.
+- API строится вокруг **ресурсов**, а не вокруг действий (`/products`, `/orders`, `/promo-codes`).
+- REST здесь **stateless**: каждый запрос самодостаточен (JWT в каждом request).
+- CRUD маппится на HTTP-методы: `POST/GET/PUT/DELETE`; `PUT` и `DELETE` идемпотентны.
+- OpenAPI используется как **контракт** между клиентом и сервером (contract-first).
+- Codegen снижает дрейф контракта: handler interfaces + DTO генерируются из spec.
+- Ошибки и валидация контрактны: предсказуемые `error_code` и структурированный `details`.
+- Синхронные вызовы просты, но увеличивают связанность и чувствительность к latency/timeout.
+- Для межсервисных высоконагруженных сценариев часто выгоднее event-driven/async обмен.
 
-Минусы:
-- сложность;
-- необходимость инфраструктуры (Kafka, Redis);
-- распределённые транзакции.
+## Частые ошибки на защите (и как не попасть)
 
-## Вариант 2 — Модульный монолит
+- Показывать только API-ответы без `SELECT` в БД.
+- Объяснять «как будто удаляем», но забыть, что `DELETE /products/{id}` здесь soft-delete (`ARCHIVED`).
+- Путать `TOKEN_INVALID`, `TOKEN_EXPIRED`, `REFRESH_TOKEN_INVALID`.
+- Не показать, что invalid input отсекается валидацией до бизнес-логики.
+- Не уметь объяснить, почему выбран contract-first и зачем нужны idempotent операции.
 
-Плюсы:
-- проще реализовать;
-- проще отлаживать;
-- меньше инфраструктуры.
+## Навигация по коду
 
-Минусы:
-- сложнее масштабировать;
-- выше риск сильной связанности;
-- сложнее эволюционировать.
-
----
-
-# ⚖ Trade-offs
-
-Trade-offs — это осознанные архитектурные компромиссы.
-
-Микросервисы дают гибкость и масштабируемость, но увеличивают сложность системы.
-
-Kafka повышает устойчивость и слабую связанность, но усложняет отладку и инфраструктуру.
-
-Отдельные базы данных повышают изоляцию сервисов, но усложняют межсервисную аналитику.
-
----
-
-# 🏁 Обоснование выбора
-
-Выбран микросервисный вариант, поскольку:
-
-- требования явно разделяются на независимые домены;
-- присутствует платёжный процесс с таймаутами;
-- используется событийная модель;
-- необходимо показать границы владения данными;
-- задание оценивает архитектурное мышление.
-
+- OpenAPI: `marketplace-api/src/main/resources/openapi/marketplace.yaml`
+- Миграции: `marketplace-api/src/main/resources/db/migration/V1__init.sql`
+- Security/JWT/RBAC: `marketplace-api/src/main/java/com/gumbatali/marketplace/security/*`
+- Ошибки: `marketplace-api/src/main/java/com/gumbatali/marketplace/web/error/GlobalExceptionHandler.java`
+- Бизнес-логика заказов: `marketplace-api/src/main/java/com/gumbatali/marketplace/service/OrderService.java`
+- Логирование API: `marketplace-api/src/main/java/com/gumbatali/marketplace/web/ApiLoggingFilter.java`
