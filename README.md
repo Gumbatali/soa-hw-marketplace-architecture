@@ -1,61 +1,61 @@
 # HW2: Marketplace API (OpenAPI + CRUD)
 
-Репозиторий подготовлен под защиту ДЗ2: быстрый запуск, E2E-демо, SQL-проверки, негативные сценарии.
+Этот репозиторий подготовлен для защиты ДЗ2.
+Главная цель: показать, что API поднимается, проходит E2E-цепочку и данные реально пишутся в PostgreSQL.
 
-## Стек
-- Java 21 + Spring Boot 3
-- OpenAPI contract-first + codegen
-- PostgreSQL 16 + Flyway
-- JWT auth + RBAC (`USER`, `SELLER`, `ADMIN`)
-
-## Что уже реализовано
-- `/auth/register`, `/auth/login`, `/auth/refresh`
-- `/products` CRUD + soft-delete (`ARCHIVED`)
-- `/orders` create/get/update/cancel
-- `GET /orders` (пагинация + фильтр)
-- `POST /orders/{id}/status` (state machine)
-- `/promo-codes` create
+## Что сделано
+- Auth: `/auth/register`, `/auth/login`, `/auth/refresh`
+- Products: CRUD + soft-delete (`ARCHIVED`)
+- Orders: create/get/update/cancel + список заказов
+- Promo codes: create
+- RBAC: `USER`, `SELLER`, `ADMIN`
 - Единый формат ошибок: `error_code`, `message`, `details`
-- JSON-логирование API + `X-Request-Id`
+- OpenAPI contract-first + code generation
 
----
+## Технологии
+- Java 21 + Spring Boot 3
+- PostgreSQL 16 + Flyway
+- OpenAPI 3 + openapi-generator
+- JWT + Spring Security
 
-## 1) Запуск перед защитой
-
-`cd marketplace-api` — перейти в модуль API.
-`docker compose down -v` — остановить и удалить контейнеры/volume для чистого старта.
-`docker compose up --build` — пересобрать образ и поднять сервисы с логами.
+## 1) Запуск перед демонстрацией
 
 ```bash
+# Переходим в модуль с API
 cd marketplace-api
+
+# Полностью очищаем прошлый запуск (контейнеры + volume)
 docker compose down -v
+
+# Поднимаем систему и сразу видим логи
+# (на защите это важно показать)
 docker compose up --build
 ```
 
-В отдельном терминале проверь:
-
-`docker compose ps` — показать статус контейнеров и порты.
+В новом терминале:
 
 ```bash
+# Проверяем, что оба сервиса живы
 cd marketplace-api
 docker compose ps
 ```
 
 Ожидается:
-- `marketplace-api` в `Up`
-- `marketplace-postgres` в `Up (healthy)`
+- `marketplace-api` -> `Up`
+- `marketplace-postgres` -> `Up (healthy)`
 
-Swagger/контракт:
-- `http://localhost:8081/swagger-ui/index.html`
-- `http://localhost:8081/v3/api-docs`
+Полезные ссылки:
+- Swagger UI: `http://localhost:8081/swagger-ui/index.html`
+- OpenAPI JSON: `http://localhost:8081/v3/api-docs`
 
 ---
 
-## 2) E2E-сценарий
+## 2) E2E-сценарий (как показывать ассистенту)
 
-Начинаем с базовых значений для одного прогона. Этот блок можно копировать целиком.
+### 2.0 Базовые переменные
 
 ```bash
+# Адрес API и тестовые данные для демонстрации
 BASE="http://localhost:8081"
 SELLER="Drugdiller"
 USERN="pmishnik"
@@ -63,160 +63,162 @@ PASS="iamloser"
 PROMO_CODE="DSBABETTER"
 ```
 
-### 2.1 Регистрация
-
-Эти два запроса создают тестовую пару пользователей под текущий прогон: продавца и покупателя.
+### 2.1 Регистрация двух пользователей
 
 ```bash
+# Регистрируем продавца
 curl -s -X POST "$BASE/auth/register" -H 'Content-Type: application/json' \
 -d "{\"username\":\"$SELLER\",\"password\":\"$PASS\",\"role\":\"SELLER\"}"
 
+# Регистрируем покупателя
 curl -s -X POST "$BASE/auth/register" -H 'Content-Type: application/json' \
 -d "{\"username\":\"$USERN\",\"password\":\"$PASS\",\"role\":\"USER\"}"
 ```
 
-### 2.2 Логин и токены (без `jq`)
+Если запускаешь повторно и видишь `Username already exists`, это нормально: пользователь уже создан.
 
-Сначала получаем JSON-ответы `/auth/login`, затем извлекаем из них `access_token` и сохраняем в переменные для следующих вызовов с `Authorization: Bearer ...`.
+### 2.2 Логин и получение токенов (простой вариант)
 
 ```bash
-SELLER_LOGIN=$(curl -s -X POST "$BASE/auth/login" -H 'Content-Type: application/json' \
--d "{\"username\":\"$SELLER\",\"password\":\"$PASS\"}")
+# Логин продавца (в ответе будет access_token)
+curl -s -X POST "$BASE/auth/login" -H 'Content-Type: application/json' \
+-d "{\"username\":\"$SELLER\",\"password\":\"$PASS\"}"
 
-USER_LOGIN=$(curl -s -X POST "$BASE/auth/login" -H 'Content-Type: application/json' \
--d "{\"username\":\"$USERN\",\"password\":\"$PASS\"}")
-
-SELLER_TOKEN=$(echo "$SELLER_LOGIN" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
-USER_TOKEN=$(echo "$USER_LOGIN" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+# Логин покупателя (в ответе будет access_token)
+curl -s -X POST "$BASE/auth/login" -H 'Content-Type: application/json' \
+-d "{\"username\":\"$USERN\",\"password\":\"$PASS\"}"
 ```
 
-### 2.3 Создание товара
-
-Продавец создаёт товар, после чего из ответа сохраняется `PRODUCT_ID` — он потребуется для заказа.
+Скопируй `access_token` из ответа и вставь:
 
 ```bash
-PROD_RESP=$(curl -s -X POST "$BASE/products" \
+# Вставь токены из ответов /auth/login
+SELLER_TOKEN="<вставь access_token продавца>"
+USER_TOKEN="<вставь access_token покупателя>"
+```
+
+### 2.3 Создание товара от лица продавца
+
+```bash
+# Создаем товар
+curl -s -X POST "$BASE/products" \
   -H "Authorization: Bearer $SELLER_TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"name":"iPhone 15","description":"128GB","price":1000.00,"stock":10,"category":"smartphones","status":"ACTIVE"}')
-
-echo "$PROD_RESP"
-PRODUCT_ID=$(echo "$PROD_RESP" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+  -d '{"name":"iPhone 15","description":"128GB","price":1000.00,"stock":10,"category":"smartphones","status":"ACTIVE"}'
 ```
 
-### 2.4 Создание промокода
-
-Создаём промокод от лица продавца.
+Скопируй `id` товара из ответа и сохрани:
 
 ```bash
-PROMO_RESP=$(curl -s -X POST "$BASE/promo-codes" \
+# Вставь id товара из ответа предыдущей команды
+PRODUCT_ID="<вставь id товара>"
+```
+
+### 2.4 Создание промокода от лица продавца
+
+```bash
+# Создаем промокод, который применим к заказу
+curl -s -X POST "$BASE/promo-codes" \
   -H "Authorization: Bearer $SELLER_TOKEN" \
   -H 'Content-Type: application/json' \
-  -d "{\"code\":\"$PROMO_CODE\",\"discount_type\":\"PERCENTAGE\",\"discount_value\":10,\"min_order_amount\":100,\"max_uses\":100,\"valid_from\":\"2025-01-01T00:00:00Z\",\"valid_until\":\"2030-01-01T00:00:00Z\",\"active\":true}")
-
-echo "$PROMO_RESP"
+  -d "{\"code\":\"$PROMO_CODE\",\"discount_type\":\"PERCENTAGE\",\"discount_value\":10,\"min_order_amount\":100,\"max_uses\":100,\"valid_from\":\"2025-01-01T00:00:00Z\",\"valid_until\":\"2030-01-01T00:00:00Z\",\"active\":true}"
 ```
 
-### 2.5 Создание заказа
-
-Покупатель оформляет заказ на созданный товар с применением промокода. Из ответа сохраняем `ORDER_ID` для последующих операций.
+### 2.5 Создание заказа от лица покупателя
 
 ```bash
-ORDER_RESP=$(curl -s -X POST "$BASE/orders" \
+# Покупатель оформляет заказ на созданный товар
+curl -s -X POST "$BASE/orders" \
   -H "Authorization: Bearer $USER_TOKEN" \
   -H 'Content-Type: application/json' \
-  -d "{\"items\":[{\"product_id\":\"$PRODUCT_ID\",\"quantity\":1}],\"promo_code\":\"$PROMO_CODE\"}")
-
-echo "$ORDER_RESP"
-ORDER_ID=$(echo "$ORDER_RESP" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+  -d "{\"items\":[{\"product_id\":\"$PRODUCT_ID\",\"quantity\":1}],\"promo_code\":\"$PROMO_CODE\"}"
 ```
 
-### 2.6 Проверка бизнес-операций
-
-Далее последовательно проверяем, что заказ виден в списке, что переход статуса работает по правилам, и что отмена возвращает систему в корректное состояние.
+Скопируй `id` заказа из ответа:
 
 ```bash
+# Вставь id заказа из ответа
+ORDER_ID="<вставь id заказа>"
+```
+
+### 2.6 Проверка бизнес-операций (список -> статус -> отмена)
+
+```bash
+# Проверяем, что заказ появился в списке
 curl -s -X GET "$BASE/orders?page=0&size=20" \
   -H "Authorization: Bearer $USER_TOKEN"
 
+# Переводим заказ в PAYMENT_PENDING
 curl -s -X POST "$BASE/orders/$ORDER_ID/status" \
   -H "Authorization: Bearer $USER_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"next_status":"PAYMENT_PENDING"}'
 
+# Отменяем заказ (должен перейти в CANCELED)
 curl -s -X POST "$BASE/orders/$ORDER_ID/cancel" \
   -H "Authorization: Bearer $USER_TOKEN"
 ```
 
 ---
 
-## 3) SQL-проверки в БД (обязательно на защите)
-
-1. `users` — проверить, что пользователи созданы с нужными ролями.
-2. `products` — проверить товар, статус и остаток.
-3. `orders` — проверить статус, итоговую сумму и скидку.
-4. `order_items` — проверить снапшот цены и количество.
-5. `promo_codes` — проверить `current_uses` после создания/отмены.
-6. `user_operations` — проверить фиксацию операций rate-limit.
+## 3) SQL-проверки в БД (обязательная часть на защите)
 
 ```bash
+# Пользователи и роли
+
 docker exec marketplace-postgres psql -U marketplace -d marketplace -c "SELECT username, role, created_at FROM users ORDER BY created_at DESC LIMIT 5;"
+
+# Товары, остатки, статусы
+
 docker exec marketplace-postgres psql -U marketplace -d marketplace -c "SELECT id, name, stock, status, seller_id FROM products ORDER BY created_at DESC LIMIT 5;"
+
+# Заказы и суммы
+
 docker exec marketplace-postgres psql -U marketplace -d marketplace -c "SELECT id, user_id, status, total_amount, discount_amount, promo_code_id FROM orders ORDER BY created_at DESC LIMIT 5;"
+
+# Позиции заказа и snapshot цены
+
 docker exec marketplace-postgres psql -U marketplace -d marketplace -c "SELECT order_id, product_id, quantity, price_at_order FROM order_items ORDER BY id DESC LIMIT 10;"
+
+# Использование промокодов
+
 docker exec marketplace-postgres psql -U marketplace -d marketplace -c "SELECT code, current_uses, max_uses, active FROM promo_codes ORDER BY id DESC LIMIT 5;"
+
+# Фиксация user operations (rate limit)
+
 docker exec marketplace-postgres psql -U marketplace -d marketplace -c "SELECT user_id, operation_type, created_at FROM user_operations ORDER BY created_at DESC LIMIT 10;"
 ```
 
 ---
 
-## 4) Альтернативные сценарии (быстрые команды)
+## 4) Быстрые негативные сценарии
 
-1. Валидация payload:
 ```bash
+# 1) Ошибка валидации
 curl -s -X POST "$BASE/auth/login" -H 'Content-Type: application/json' -d '{"username":"a","password":"1"}'
-```
-Ожидается: `VALIDATION_ERROR`.
 
-2. Нет токена:
-```bash
+# 2) Нет токена
 curl -s -X POST "$BASE/orders" -H 'Content-Type: application/json' -d '{"items":[]}'
-```
-Ожидается: `TOKEN_INVALID`.
 
-3. Недостаточно прав (`USER` -> create product):
-```bash
+# 3) У USER нет права создавать товар
 curl -s -X POST "$BASE/products" \
   -H "Authorization: Bearer $USER_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"name":"X","price":1.0,"stock":1,"category":"c","status":"ACTIVE"}'
-```
-Ожидается: `ACCESS_DENIED`.
 
-4. Недопустимый переход статуса:
-```bash
+# 4) Недопустимый переход статуса
 curl -s -X POST "$BASE/orders/$ORDER_ID/status" \
   -H "Authorization: Bearer $USER_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"next_status":"SHIPPED"}'
 ```
-Ожидается: `INVALID_STATE_TRANSITION`.
 
 ---
 
 ## 5) Что открыть в коде на разборе
 - Контракт: `marketplace-api/src/main/resources/openapi/marketplace.yaml`
 - Миграции: `marketplace-api/src/main/resources/db/migration/V1__init.sql`
-- Заказы: `marketplace-api/src/main/java/com/gumbatali/marketplace/service/OrderService.java`
-- Security: `marketplace-api/src/main/java/com/gumbatali/marketplace/security/`
+- Логика заказов: `marketplace-api/src/main/java/com/gumbatali/marketplace/service/OrderService.java`
+- Безопасность: `marketplace-api/src/main/java/com/gumbatali/marketplace/security/`
 - Ошибки: `marketplace-api/src/main/java/com/gumbatali/marketplace/web/error/GlobalExceptionHandler.java`
 - Логирование: `marketplace-api/src/main/java/com/gumbatali/marketplace/web/ApiLoggingFilter.java`
-
----
-
-## 6) Короткие ответы для теории
-- REST stateless: сервер не хранит сессию, каждый запрос самодостаточен (JWT).
-- Contract-first: сначала OpenAPI, потом код; снижает рассинхрон между клиентом и сервером.
-- Идемпотентность: `GET/PUT/DELETE` по смыслу идемпотентны, `POST` обычно нет.
-- Почему транзакции в заказах: stock/order/items/promo должны изменяться атомарно.
-- Почему soft-delete: аудит и восстановляемость, вместо физического удаления.
