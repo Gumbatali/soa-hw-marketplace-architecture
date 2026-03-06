@@ -59,10 +59,10 @@ Swagger/контракт:
 
 ```bash
 BASE="http://localhost:8081"
-SELLER="seller1"
-USERN="user1"
-PASS="Strong123"
-PROMO_CODE="PROMO10"
+SELLER="Drugdiller"
+USERN="pmishnik"
+PASS="iamloser"
+PROMO_CODE="DSBABETTER"
 ```
 
 ### 2.1 Регистрация
