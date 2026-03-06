@@ -22,6 +22,10 @@
 
 ## 1) Запуск перед защитой
 
+`cd marketplace-api` — перейти в модуль API.
+`docker compose down -v` — остановить и удалить контейнеры/volume для чистого старта.
+`docker compose up --build` — пересобрать образ и поднять сервисы с логами.
+
 ```bash
 cd marketplace-api
 docker compose down -v
@@ -29,6 +33,8 @@ docker compose up --build
 ```
 
 В отдельном терминале проверь:
+
+`docker compose ps` — показать статус контейнеров и порты.
 
 ```bash
 cd marketplace-api
@@ -45,9 +51,11 @@ Swagger/контракт:
 
 ---
 
-## 2) E2E-сценарий (как показывать ассистенту)
+## 2) E2E-сценарий
 
 Все команды ниже вставляются **без строк-комментариев `# ...`**.
+
+`BASE` — URL API, `SUF` — уникальный суффикс для логинов/промокода, `PASS` — пароль.
 
 ```bash
 BASE="http://localhost:8081"
@@ -59,6 +67,8 @@ PASS="Strong123"
 
 ### 2.1 Регистрация
 
+Первая команда создаёт продавца (`SELLER`), вторая — покупателя (`USER`).
+
 ```bash
 curl -s -X POST "$BASE/auth/register" -H 'Content-Type: application/json' \
 -d "{\"username\":\"$SELLER\",\"password\":\"$PASS\",\"role\":\"SELLER\"}"
@@ -68,6 +78,9 @@ curl -s -X POST "$BASE/auth/register" -H 'Content-Type: application/json' \
 ```
 
 ### 2.2 Логин и токены (без `jq`)
+
+Первые две команды логинят пользователей.
+Команды `sed` достают `access_token` из JSON-ответа.
 
 ```bash
 SELLER_LOGIN=$(curl -s -X POST "$BASE/auth/login" -H 'Content-Type: application/json' \
@@ -82,6 +95,9 @@ USER_TOKEN=$(echo "$USER_LOGIN" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p'
 
 ### 2.3 Создание товара
 
+`POST /products` создаёт товар от лица продавца.
+`PRODUCT_ID` извлекается из ответа и используется в следующих запросах.
+
 ```bash
 PROD_RESP=$(curl -s -X POST "$BASE/products" \
   -H "Authorization: Bearer $SELLER_TOKEN" \
@@ -93,6 +109,9 @@ PRODUCT_ID=$(echo "$PROD_RESP" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
 ```
 
 ### 2.4 Создание промокода
+
+`PROMO_CODE` формируется уникальным.
+`POST /promo-codes` создаёт промокод от лица продавца.
 
 ```bash
 PROMO_CODE="PROMO${SUF}"
@@ -107,6 +126,9 @@ echo "$PROMO_RESP"
 
 ### 2.5 Создание заказа
 
+`POST /orders` создаёт заказ от лица покупателя по `PRODUCT_ID` и `PROMO_CODE`.
+`ORDER_ID` извлекается из ответа.
+
 ```bash
 ORDER_RESP=$(curl -s -X POST "$BASE/orders" \
   -H "Authorization: Bearer $USER_TOKEN" \
@@ -118,6 +140,10 @@ ORDER_ID=$(echo "$ORDER_RESP" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
 ```
 
 ### 2.6 Проверка бизнес-операций
+
+`GET /orders` — проверить, что заказ виден в списке.
+`POST /orders/{id}/status` — проверить переход состояния.
+`POST /orders/{id}/cancel` — проверить отмену и возврат остатков.
 
 ```bash
 curl -s -X GET "$BASE/orders?page=0&size=20" \
@@ -135,6 +161,13 @@ curl -s -X POST "$BASE/orders/$ORDER_ID/cancel" \
 ---
 
 ## 3) SQL-проверки в БД (обязательно на защите)
+
+1. `users` — проверить, что пользователи созданы с нужными ролями.
+2. `products` — проверить товар, статус и остаток.
+3. `orders` — проверить статус, итоговую сумму и скидку.
+4. `order_items` — проверить снапшот цены и количество.
+5. `promo_codes` — проверить `current_uses` после создания/отмены.
+6. `user_operations` — проверить фиксацию операций rate-limit.
 
 ```bash
 docker exec marketplace-postgres psql -U marketplace -d marketplace -c "SELECT username, role, created_at FROM users ORDER BY created_at DESC LIMIT 5;"
