@@ -23,7 +23,7 @@
 ## 1) Запуск перед защитой
 
 ```bash
-cd "/Users/gumbatali/work/soa-hw-marketplace-architecture-hw2-readme/marketplace-api"
+cd marketplace-api
 docker compose down -v
 docker compose up --build
 ```
@@ -31,7 +31,7 @@ docker compose up --build
 В отдельном терминале проверь:
 
 ```bash
-cd "/Users/gumbatali/work/soa-hw-marketplace-architecture-hw2-readme/marketplace-api"
+cd marketplace-api
 docker compose ps
 ```
 
