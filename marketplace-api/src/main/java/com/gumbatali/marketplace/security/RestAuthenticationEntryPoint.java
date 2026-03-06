@@ -26,6 +26,7 @@ public class RestAuthenticationEntryPoint implements AuthenticationEntryPoint {
     public void commence(HttpServletRequest request,
                          HttpServletResponse response,
                          AuthenticationException authException) throws IOException {
+        // По умолчанию считаем ошибку токена невалидной, но фильтр может подставить TOKEN_EXPIRED.
         ErrorCode errorCode = ErrorCode.TOKEN_INVALID;
         Object attribute = request.getAttribute(AUTH_ERROR_CODE_ATTR);
         if (attribute instanceof ErrorCode attrCode) {

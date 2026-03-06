@@ -24,6 +24,7 @@ public class RestAccessDeniedHandler implements AccessDeniedHandler {
     public void handle(HttpServletRequest request,
                        HttpServletResponse response,
                        AccessDeniedException accessDeniedException) throws IOException {
+        // Единый контрактный ответ 403 для недостатка прав.
         ErrorCode errorCode = ErrorCode.ACCESS_DENIED;
         ErrorResponse body = new ErrorResponse(
             com.gumbatali.marketplace.generated.model.ErrorCode.valueOf(errorCode.name()),

@@ -27,6 +27,7 @@ public class OrdersController implements OrdersApi {
     @Override
     @PreAuthorize("hasAnyRole('USER','ADMIN')")
     public ResponseEntity<OrderResponse> createOrder(OrderCreateRequest orderCreateRequest) {
+        // Заказ создаётся от текущего пользователя из JWT.
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(orderService.createOrder(orderCreateRequest, SecurityUtils.currentUser()));
     }
@@ -58,6 +59,7 @@ public class OrdersController implements OrdersApi {
     @Override
     @PreAuthorize("hasAnyRole('USER','ADMIN')")
     public ResponseEntity<OrderResponse> updateOrderStatus(UUID id, OrderStatusUpdateRequest orderStatusUpdateRequest) {
+        // Отдельный endpoint для state machine переходов заказа.
         return ResponseEntity.ok(orderService.updateOrderStatus(id, orderStatusUpdateRequest, SecurityUtils.currentUser()));
     }
 }

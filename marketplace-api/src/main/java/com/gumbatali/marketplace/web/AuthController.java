@@ -22,6 +22,7 @@ public class AuthController implements AuthApi {
 
     @Override
     public ResponseEntity<UserResponse> register(AuthRegisterRequest authRegisterRequest) {
+        // 201 Created для успешной регистрации.
         return ResponseEntity.status(HttpStatus.CREATED).body(authService.register(authRegisterRequest));
     }
 

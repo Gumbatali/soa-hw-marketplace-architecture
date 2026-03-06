@@ -10,6 +10,8 @@ public final class SecurityUtils {
 
     public static AuthenticatedUser currentUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        // В нормальном потоке защищенного endpoint здесь всегда есть AuthenticatedUser.
+        // Возвращаем null только для анонимных/публичных запросов.
         if (authentication == null || !(authentication.getPrincipal() instanceof AuthenticatedUser user)) {
             return null;
         }

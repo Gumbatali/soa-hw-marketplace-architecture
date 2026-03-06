@@ -3,15 +3,19 @@ package com.gumbatali.marketplace.common.error;
 import org.springframework.http.HttpStatus;
 
 public enum ErrorCode {
+    // Product errors
     PRODUCT_NOT_FOUND(HttpStatus.NOT_FOUND, "Product not found"),
     PRODUCT_INACTIVE(HttpStatus.CONFLICT, "Product is inactive"),
+    // Order errors
     ORDER_NOT_FOUND(HttpStatus.NOT_FOUND, "Order not found"),
     ORDER_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "Order rate limit exceeded"),
     ORDER_HAS_ACTIVE(HttpStatus.CONFLICT, "User already has active order"),
     INVALID_STATE_TRANSITION(HttpStatus.CONFLICT, "Invalid order state transition"),
     INSUFFICIENT_STOCK(HttpStatus.CONFLICT, "Insufficient stock"),
+    // Promo errors
     PROMO_CODE_INVALID(HttpStatus.UNPROCESSABLE_ENTITY, "Promo code invalid"),
     PROMO_CODE_MIN_AMOUNT(HttpStatus.UNPROCESSABLE_ENTITY, "Order amount below promo minimum"),
+    // Ownership / validation / auth errors
     ORDER_OWNERSHIP_VIOLATION(HttpStatus.FORBIDDEN, "Order belongs to another user"),
     VALIDATION_ERROR(HttpStatus.BAD_REQUEST, "Validation failed"),
     TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "Token expired"),

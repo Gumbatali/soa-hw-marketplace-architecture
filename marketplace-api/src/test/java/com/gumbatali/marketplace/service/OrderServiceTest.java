@@ -66,6 +66,7 @@ class OrderServiceTest {
 
     @Test
     void createOrderShouldFailWhenProductInactive() {
+        // GIVEN: товар найден, но он INACTIVE.
         UUID userId = UUID.randomUUID();
         UUID productId = UUID.randomUUID();
 
@@ -90,12 +91,14 @@ class OrderServiceTest {
 
         AuthenticatedUser user = new AuthenticatedUser(userId, "user", UserRole.USER);
 
+        // THEN: создать заказ нельзя.
         ApiException exception = assertThrows(ApiException.class, () -> orderService.createOrder(request, user));
         assertEquals(ErrorCode.PRODUCT_INACTIVE, exception.getErrorCode());
     }
 
     @Test
     void listOrdersShouldRejectSellerRole() {
+        // SELLER по ТЗ не может читать/создавать заказы.
         AuthenticatedUser seller = new AuthenticatedUser(UUID.randomUUID(), "seller", UserRole.SELLER);
 
         ApiException exception = assertThrows(
@@ -107,6 +110,7 @@ class OrderServiceTest {
 
     @Test
     void updateOrderStatusShouldFailForInvalidTransition() {
+        // CREATED -> PAID напрямую запрещено.
         UUID orderId = UUID.randomUUID();
         UUID ownerId = UUID.randomUUID();
 
@@ -134,6 +138,7 @@ class OrderServiceTest {
 
     @Test
     void updateOrderStatusShouldAdvanceForValidTransition() {
+        // PAYMENT_PENDING -> PAID допустимый переход.
         UUID orderId = UUID.randomUUID();
         UUID ownerId = UUID.randomUUID();
 

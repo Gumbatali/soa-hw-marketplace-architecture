@@ -32,10 +32,12 @@ public class JwtService {
         if (secretBytes.length < 32) {
             throw new IllegalArgumentException("JWT secret must be at least 32 bytes");
         }
+        // HS256 ключ из общего секрета приложения.
         this.key = Keys.hmacShaKeyFor(secretBytes);
     }
 
     public String generateAccessToken(UserEntity user, OffsetDateTime expiresAt) {
+        // Access token: содержит username + role, используется на API-запросах.
         return Jwts.builder()
             .subject(user.getId().toString())
             .claim(USERNAME_CLAIM, user.getUsername())
@@ -48,6 +50,7 @@ public class JwtService {
     }
 
     public String generateRefreshToken(UserEntity user, OffsetDateTime expiresAt) {
+        // Refresh token: длиннее живет, отдельно хранится hash в БД.
         return Jwts.builder()
             .subject(user.getId().toString())
             .claim(ROLE_CLAIM, user.getRole().name())
@@ -80,6 +83,7 @@ public class JwtService {
 
     public String hashToken(String token) {
         try {
+            // Храним в БД только SHA-256 hash refresh-токена.
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(token.getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(hash);

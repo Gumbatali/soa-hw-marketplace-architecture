@@ -27,6 +27,7 @@ public interface OrderRepository extends JpaRepository<OrderEntity, UUID>, JpaSp
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @EntityGraph(attributePaths = {"items", "promoCode"})
     @Query("select o from OrderEntity o where o.id = :id")
+    // FOR UPDATE: используем в update/cancel/status, чтобы избежать гонок по одному заказу.
     Optional<OrderEntity> findByIdForUpdate(@Param("id") UUID id);
 
     @EntityGraph(attributePaths = {"items", "promoCode"})

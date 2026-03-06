@@ -21,11 +21,13 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<ErrorResponse> handleApiException(ApiException ex) {
+        // Контрактные бизнес-ошибки, которые мы сами бросаем в сервисах.
         return build(ex.getErrorCode(), ex.getMessage(), ex.getDetails());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleMethodArgumentNotValid(MethodArgumentNotValidException ex) {
+        // Ошибки @Valid по body: собираем по полям.
         Map<String, Object> details = new LinkedHashMap<>();
         for (FieldError fieldError : ex.getBindingResult().getFieldErrors()) {
             details.computeIfAbsent(fieldError.getField(), ignored -> new java.util.ArrayList<String>());
@@ -38,6 +40,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ConstraintViolationException.class)
     public ResponseEntity<ErrorResponse> handleConstraintViolation(ConstraintViolationException ex) {
+        // Ошибки валидации query/path параметров.
         Map<String, Object> details = ex.getConstraintViolations().stream()
             .collect(Collectors.toMap(
                 violation -> violation.getPropertyPath().toString(),
@@ -50,6 +53,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ErrorResponse> handleMessageNotReadable(HttpMessageNotReadableException ex) {
+        // Невалидный JSON или несовместимые типы в body.
         return build(
             ErrorCode.VALIDATION_ERROR,
             ErrorCode.VALIDATION_ERROR.defaultMessage(),
@@ -59,6 +63,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ErrorResponse> handleDataIntegrity(DataIntegrityViolationException ex) {
+        // Ошибки ограничений БД (unique/fk/not null и т.д.).
         return build(
             ErrorCode.VALIDATION_ERROR,
             ErrorCode.VALIDATION_ERROR.defaultMessage(),
@@ -68,6 +73,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpected(Exception ex) {
+        // Safety-net: не раскрываем внутренние детали наружу.
         return build(ErrorCode.INTERNAL_ERROR, ErrorCode.INTERNAL_ERROR.defaultMessage(), null);
     }
 

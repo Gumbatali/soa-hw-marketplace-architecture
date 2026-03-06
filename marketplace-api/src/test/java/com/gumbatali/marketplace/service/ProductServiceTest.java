@@ -33,6 +33,7 @@ class ProductServiceTest {
 
     @Test
     void createProductShouldRejectUserRole() {
+        // GIVEN: обычный USER пытается создать товар
         ProductCreate request = new ProductCreate();
         request.setName("name");
         request.setDescription("desc");
@@ -43,6 +44,7 @@ class ProductServiceTest {
 
         AuthenticatedUser user = new AuthenticatedUser(UUID.randomUUID(), "john", UserRole.USER);
 
+        // THEN: доступ должен быть запрещен
         ApiException exception = assertThrows(ApiException.class, () -> productService.createProduct(request, user));
         assertEquals(ErrorCode.ACCESS_DENIED, exception.getErrorCode());
     }

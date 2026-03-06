@@ -20,6 +20,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class ApiMapper {
 
+    // Entity -> API DTO
     public ProductResponse toProductResponse(ProductEntity entity) {
         ProductResponse response = new ProductResponse();
         response.setId(entity.getId());
@@ -35,6 +36,7 @@ public class ApiMapper {
         return response;
     }
 
+    // Entity -> API DTO
     public PromoCodeResponse toPromoCodeResponse(PromoCodeEntity entity) {
         PromoCodeResponse response = new PromoCodeResponse();
         response.setId(entity.getId());
@@ -52,6 +54,7 @@ public class ApiMapper {
         return response;
     }
 
+    // Entity -> API DTO
     public UserResponse toUserResponse(UserEntity user) {
         UserResponse response = new UserResponse();
         response.setId(user.getId());
@@ -61,6 +64,7 @@ public class ApiMapper {
         return response;
     }
 
+    // Entity -> API DTO
     public OrderResponse toOrderResponse(OrderEntity order) {
         OrderResponse response = new OrderResponse();
         response.setId(order.getId());
@@ -75,10 +79,12 @@ public class ApiMapper {
         return response;
     }
 
+    // API enum -> domain enum
     public ProductStatus toDomainProductStatus(com.gumbatali.marketplace.generated.model.ProductStatus status) {
         return ProductStatus.valueOf(status.name());
     }
 
+    // domain enum -> API enum
     public com.gumbatali.marketplace.generated.model.ProductStatus toApiProductStatus(ProductStatus status) {
         return com.gumbatali.marketplace.generated.model.ProductStatus.valueOf(status.name());
     }

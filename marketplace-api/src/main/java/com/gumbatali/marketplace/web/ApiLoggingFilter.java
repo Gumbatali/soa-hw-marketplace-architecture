@@ -41,6 +41,7 @@ public class ApiLoggingFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
+        // request_id генерируется на каждый запрос и возвращается в ответе.
         String requestId = UUID.randomUUID().toString();
         response.setHeader("X-Request-Id", requestId);
 
@@ -50,6 +51,7 @@ public class ApiLoggingFilter extends OncePerRequestFilter {
         try {
             filterChain.doFilter(wrappedRequest, response);
         } finally {
+            // Формируем JSON-лог в едином формате.
             Map<String, Object> logEntry = new LinkedHashMap<>();
             logEntry.put("request_id", requestId);
             logEntry.put("method", request.getMethod());
@@ -62,6 +64,7 @@ public class ApiLoggingFilter extends OncePerRequestFilter {
             logEntry.put("timestamp", OffsetDateTime.now(ZoneOffset.UTC));
 
             if (MUTATING_METHODS.contains(request.getMethod())) {
+                // Для POST/PUT/DELETE логируем body, но маскируем чувствительные поля.
                 String rawBody = extractBody(wrappedRequest);
                 if (!rawBody.isBlank()) {
                     logEntry.put("request_body", maskSensitiveBody(rawBody));
@@ -85,6 +88,7 @@ public class ApiLoggingFilter extends OncePerRequestFilter {
             Object payload = objectMapper.readValue(rawBody, Object.class);
             return maskRecursive(payload);
         } catch (JsonProcessingException ignored) {
+            // Fallback для не-JSON payload.
             return rawBody.replaceAll("(?i)(\\\"password\\\"\\s*:\\s*\\\")[^\\\"]*(\\\")", "$1***$2");
         }
     }

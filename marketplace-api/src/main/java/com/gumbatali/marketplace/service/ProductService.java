@@ -3,6 +3,7 @@ package com.gumbatali.marketplace.service;
 import com.gumbatali.marketplace.common.error.ApiException;
 import com.gumbatali.marketplace.common.error.ErrorCode;
 import com.gumbatali.marketplace.domain.model.ProductEntity;
+import com.gumbatali.marketplace.domain.model.ProductStatus;
 import com.gumbatali.marketplace.domain.model.UserRole;
 import com.gumbatali.marketplace.domain.repository.ProductRepository;
 import com.gumbatali.marketplace.generated.model.ProductCreate;
@@ -31,6 +32,7 @@ public class ProductService {
 
     @Transactional
     public ProductResponse createProduct(ProductCreate request, AuthenticatedUser user) {
+        // USER не может создавать товар по матрице ролей.
         if (user.role() == UserRole.USER) {
             throw new ApiException(ErrorCode.ACCESS_DENIED);
         }
@@ -60,6 +62,7 @@ public class ProductService {
                                             Integer size,
                                             com.gumbatali.marketplace.generated.model.ProductStatus status,
                                             String category) {
+        // Пошаговая сборка фильтра: статус + категория.
         Specification<ProductEntity> spec = Specification.where(null);
 
         if (status != null) {
@@ -106,14 +109,17 @@ public class ProductService {
             .orElseThrow(() -> new ApiException(ErrorCode.PRODUCT_NOT_FOUND));
 
         verifyProductOwnership(user, product);
-        product.setStatus(com.gumbatali.marketplace.domain.model.ProductStatus.ARCHIVED);
+        // Мягкое удаление: физически запись не удаляем.
+        product.setStatus(ProductStatus.ARCHIVED);
         productRepository.save(product);
     }
 
     private void verifyProductOwnership(AuthenticatedUser user, ProductEntity product) {
+        // ADMIN может всё.
         if (user.role() == UserRole.ADMIN) {
             return;
         }
+        // SELLER может менять только свои товары.
         if (user.role() == UserRole.SELLER && user.id().equals(product.getSellerId())) {
             return;
         }

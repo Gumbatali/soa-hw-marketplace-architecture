@@ -16,9 +16,11 @@ public interface PromoCodeRepository extends JpaRepository<PromoCodeEntity, UUID
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select p from PromoCodeEntity p where p.code = :code")
+    // FOR UPDATE при применении промокода, чтобы корректно менять current_uses.
     Optional<PromoCodeEntity> findByCodeForUpdate(@Param("code") String code);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select p from PromoCodeEntity p where p.id = :id")
+    // FOR UPDATE при update/cancel заказа, если промокод уже привязан к заказу.
     Optional<PromoCodeEntity> findByIdForUpdate(@Param("id") UUID id);
 }

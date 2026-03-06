@@ -21,6 +21,7 @@ public class PromoCodesController implements PromoCodesApi {
     @Override
     @PreAuthorize("hasAnyRole('SELLER','ADMIN')")
     public ResponseEntity<PromoCodeResponse> createPromoCode(PromoCodeCreateRequest promoCodeCreateRequest) {
+        // Промокоды создают только SELLER и ADMIN.
         return ResponseEntity.status(HttpStatus.CREATED).body(promoCodeService.createPromoCode(promoCodeCreateRequest));
     }
 }

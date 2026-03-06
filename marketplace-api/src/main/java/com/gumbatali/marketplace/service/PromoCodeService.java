@@ -23,6 +23,7 @@ public class PromoCodeService {
 
     @Transactional
     public PromoCodeResponse createPromoCode(PromoCodeCreateRequest request) {
+        // Базовая бизнес-валидация периода действия промокода.
         if (!request.getValidUntil().isAfter(request.getValidFrom())) {
             throw new ApiException(
                 ErrorCode.VALIDATION_ERROR,
@@ -42,6 +43,7 @@ public class PromoCodeService {
         promoCode.setValidUntil(request.getValidUntil());
         promoCode.setActive(request.getActive());
 
+        // current_uses начинается с нуля.
         PromoCodeEntity saved = promoCodeRepository.save(promoCode);
         return apiMapper.toPromoCodeResponse(saved);
     }

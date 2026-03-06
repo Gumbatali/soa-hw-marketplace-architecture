@@ -48,6 +48,7 @@ public class AuthService {
 
     @Transactional
     public UserResponse register(AuthRegisterRequest request) {
+        // Простая защита от дублей на уровне бизнес-логики.
         if (userRepository.existsByUsername(request.getUsername())) {
             throw new ApiException(
                 ErrorCode.VALIDATION_ERROR,
@@ -66,6 +67,7 @@ public class AuthService {
 
     @Transactional
     public AuthTokensResponse login(AuthLoginRequest request) {
+        // В учебном проекте объединяем ошибки "не найден" и "неверный пароль" в TOKEN_INVALID.
         UserEntity user = userRepository.findByUsername(request.getUsername())
             .orElseThrow(() -> new ApiException(ErrorCode.TOKEN_INVALID));
 
@@ -80,11 +82,13 @@ public class AuthService {
     public AuthTokensResponse refresh(AuthRefreshRequest request) {
         UUID userId;
         try {
+            // Проверяем подпись/срок действия и тип токена (должен быть REFRESH).
             userId = jwtService.parseRefreshToken(request.getRefreshToken());
         } catch (JwtException | IllegalArgumentException ex) {
             throw new ApiException(ErrorCode.REFRESH_TOKEN_INVALID);
         }
 
+        // В БД хранится hash refresh-токена: это безопаснее, чем хранить token как есть.
         String refreshHash = jwtService.hashToken(request.getRefreshToken());
         RefreshTokenEntity refreshToken = refreshTokenRepository.findByTokenHash(refreshHash)
             .orElseThrow(() -> new ApiException(ErrorCode.REFRESH_TOKEN_INVALID));
@@ -100,6 +104,7 @@ public class AuthService {
 
     private AuthTokensResponse issueTokens(UserEntity user) {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        // Чистим старые refresh-токены, чтобы таблица не росла бесконечно.
         refreshTokenRepository.deleteAllByExpiresAtBefore(now);
 
         OffsetDateTime accessExpiresAt = now.plusMinutes(appProperties.auth().accessTokenMinutes());

@@ -26,6 +26,7 @@ public class ProductsController implements ProductsApi {
     @Override
     @PreAuthorize("hasAnyRole('SELLER','ADMIN')")
     public ResponseEntity<ProductResponse> createProduct(ProductCreate productCreate) {
+        // Дополнительно к аннотации role-check в сервисе есть проверка ownership.
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(productService.createProduct(productCreate, SecurityUtils.currentUser()));
     }
@@ -51,6 +52,7 @@ public class ProductsController implements ProductsApi {
     @Override
     @PreAuthorize("hasAnyRole('SELLER','ADMIN')")
     public ResponseEntity<Void> deleteProduct(UUID id) {
+        // DELETE здесь мягкий: внутри ставится статус ARCHIVED.
         productService.deleteProduct(id, SecurityUtils.currentUser());
         return ResponseEntity.noContent().build();
     }

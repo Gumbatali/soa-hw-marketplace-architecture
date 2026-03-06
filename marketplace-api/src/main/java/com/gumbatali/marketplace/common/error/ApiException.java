@@ -18,6 +18,7 @@ public class ApiException extends RuntimeException {
     public ApiException(ErrorCode errorCode, String message, Map<String, Object> details) {
         super(message);
         this.errorCode = errorCode;
+        // details используется для контрактных подсказок клиенту (field errors, stock list и т.д.).
         this.details = details;
     }
 

@@ -31,6 +31,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String uri = request.getRequestURI();
+        // Публичные endpoints пропускаем без JWT-проверки.
         return uri.startsWith("/auth/")
             || uri.startsWith("/swagger-ui/")
             || uri.startsWith("/v3/api-docs")
@@ -41,13 +42,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
-        String header = request.getHeader("Authorization");
-        if (header == null || !header.startsWith("Bearer ")) {
+        String authorizationHeader = request.getHeader("Authorization");
+        if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        String token = header.substring(7);
+        String token = authorizationHeader.substring(7);
         try {
             AuthenticatedUser user = jwtService.parseAccessToken(token);
             var authorities = List.of(new SimpleGrantedAuthority("ROLE_" + user.role().name()));
@@ -59,10 +60,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             SecurityContextHolder.getContext().setAuthentication(authentication);
             filterChain.doFilter(request, response);
         } catch (ExpiredJwtException expired) {
+            // Отдельный error code по контракту для просроченного токена.
             SecurityContextHolder.clearContext();
             request.setAttribute(RestAuthenticationEntryPoint.AUTH_ERROR_CODE_ATTR, ErrorCode.TOKEN_EXPIRED);
             authenticationEntryPoint.commence(request, response, new BadCredentialsException("Token expired", expired));
         } catch (JwtException | IllegalArgumentException ex) {
+            // Любая другая ошибка парсинга JWT -> TOKEN_INVALID.
             SecurityContextHolder.clearContext();
             request.setAttribute(RestAuthenticationEntryPoint.AUTH_ERROR_CODE_ATTR, ErrorCode.TOKEN_INVALID);
             authenticationEntryPoint.commence(request, response, new BadCredentialsException("Token invalid", ex));

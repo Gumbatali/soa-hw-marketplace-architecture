@@ -16,5 +16,6 @@ public interface ProductRepository extends JpaRepository<ProductEntity, UUID>, J
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select p from ProductEntity p where p.id in :ids")
+    // FOR UPDATE: блокировка товаров для атомарного резервирования/возврата stock.
     List<ProductEntity> lockAllByIdIn(@Param("ids") Collection<UUID> ids);
 }

@@ -31,6 +31,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -70,13 +71,16 @@ public class OrderService {
 
     @Transactional
     public OrderResponse createOrder(OrderCreateRequest request, AuthenticatedUser user) {
+        // SELLER не может оформлять заказы.
         if (user.role() == UserRole.SELLER) {
             throw new ApiException(ErrorCode.ACCESS_DENIED);
         }
 
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        // 1) Ограничение частоты операций.
         validateRateLimit(user.id(), UserOperationType.CREATE_ORDER, now);
 
+        // 2) Проверка, что нет активного незавершенного заказа.
         boolean hasActiveOrder = orderRepository.existsByUserIdAndStatusIn(
             user.id(),
             List.of(OrderStatus.CREATED, OrderStatus.PAYMENT_PENDING)
@@ -85,12 +89,15 @@ public class OrderService {
             throw new ApiException(ErrorCode.ORDER_HAS_ACTIVE);
         }
 
+        // 3) Собираем позиции и блокируем товары в БД (FOR UPDATE).
         Map<UUID, Integer> requested = aggregateQuantities(request.getItems());
         Map<UUID, ProductEntity> products = loadAndLockProducts(requested.keySet());
+        // 4) Проверяем активность и остатки, затем резервируем stock.
         validateProductsAreActive(products, requested.keySet());
         validateStock(products, requested);
         reserveStock(products, requested);
 
+        // 5) Делаем snapshot цены в order_items.
         List<OrderItemEntity> orderItems = buildOrderItems(requested, products);
         BigDecimal subtotal = calculateSubtotal(orderItems);
 
@@ -98,6 +105,7 @@ public class OrderService {
         order.setUserId(user.id());
         order.setStatus(OrderStatus.CREATED);
 
+        // 6) Применяем промокод и финализируем итоговую сумму.
         Pricing pricing = applyPromoOnCreate(request.getPromoCode(), subtotal, now);
         order.setPromoCode(pricing.promoCode);
         order.setDiscountAmount(pricing.discount);
@@ -122,10 +130,12 @@ public class OrderService {
                                         Integer size,
                                         com.gumbatali.marketplace.generated.model.OrderStatus status,
                                         AuthenticatedUser user) {
+        // SELLER не может читать заказы.
         if (user.role() == UserRole.SELLER) {
             throw new ApiException(ErrorCode.ACCESS_DENIED);
         }
 
+        // USER видит только свои заказы, ADMIN - все.
         Specification<OrderEntity> spec = Specification.where(null);
         if (user.role() == UserRole.USER) {
             spec = spec.and((root, query, cb) -> cb.equal(root.get("userId"), user.id()));
@@ -149,6 +159,7 @@ public class OrderService {
 
     @Transactional
     public OrderResponse updateOrder(UUID orderId, OrderUpdateRequest request, AuthenticatedUser user) {
+        // SELLER не может менять заказы.
         if (user.role() == UserRole.SELLER) {
             throw new ApiException(ErrorCode.ACCESS_DENIED);
         }
@@ -162,21 +173,19 @@ public class OrderService {
             throw new ApiException(ErrorCode.INVALID_STATE_TRANSITION);
         }
 
+        // Защита от слишком частых обновлений.
         validateRateLimit(user.id(), UserOperationType.UPDATE_ORDER, now);
 
         Map<UUID, Integer> oldQuantities = aggregateFromExistingItems(order.getItems());
         Map<UUID, Integer> newQuantities = aggregateQuantities(request.getItems());
 
-        List<UUID> allProductIds = new ArrayList<>(oldQuantities.keySet());
-        for (UUID id : newQuantities.keySet()) {
-            if (!allProductIds.contains(id)) {
-                allProductIds.add(id);
-            }
-        }
+        // Собираем все product_id без дублей: старые + новые позиции.
+        LinkedHashSet<UUID> allProductIds = new LinkedHashSet<>(oldQuantities.keySet());
+        allProductIds.addAll(newQuantities.keySet());
 
         Map<UUID, ProductEntity> products = loadAndLockProducts(allProductIds);
 
-        // Return previously reserved stock first.
+        // Сначала возвращаем старый резерв, потом резервируем новый.
         for (Map.Entry<UUID, Integer> oldItem : oldQuantities.entrySet()) {
             ProductEntity product = products.get(oldItem.getKey());
             if (product != null) {
@@ -188,6 +197,7 @@ public class OrderService {
         validateStock(products, newQuantities);
         reserveStock(products, newQuantities);
 
+        // Пересчет позиции/сумм делаем в той же транзакции.
         List<OrderItemEntity> newItems = buildOrderItems(newQuantities, products);
         BigDecimal subtotal = calculateSubtotal(newItems);
 
@@ -204,6 +214,7 @@ public class OrderService {
 
     @Transactional
     public OrderResponse cancelOrder(UUID orderId, AuthenticatedUser user) {
+        // SELLER не может отменять заказы.
         if (user.role() == UserRole.SELLER) {
             throw new ApiException(ErrorCode.ACCESS_DENIED);
         }
@@ -216,6 +227,7 @@ public class OrderService {
             throw new ApiException(ErrorCode.INVALID_STATE_TRANSITION);
         }
 
+        // Возвращаем резерв на склад.
         Map<UUID, Integer> orderQuantities = aggregateFromExistingItems(order.getItems());
         Map<UUID, ProductEntity> products = loadAndLockProducts(orderQuantities.keySet());
 
@@ -227,6 +239,7 @@ public class OrderService {
         }
 
         if (order.getPromoCode() != null) {
+            // При отмене откатываем usage промокода.
             PromoCodeEntity promoCode = promoCodeRepository.findByIdForUpdate(order.getPromoCode().getId())
                 .orElse(order.getPromoCode());
             if (promoCode.getCurrentUses() > 0) {
@@ -244,6 +257,7 @@ public class OrderService {
     public OrderResponse updateOrderStatus(UUID orderId,
                                            OrderStatusUpdateRequest request,
                                            AuthenticatedUser user) {
+        // SELLER не может менять статусы заказов.
         if (user.role() == UserRole.SELLER) {
             throw new ApiException(ErrorCode.ACCESS_DENIED);
         }
@@ -261,6 +275,7 @@ public class OrderService {
     }
 
     private Map<UUID, ProductEntity> loadAndLockProducts(Collection<UUID> productIds) {
+        // Все товары читаем с PESSIMISTIC_WRITE, чтобы избежать гонок по stock.
         Map<UUID, ProductEntity> map = new HashMap<>();
         if (productIds.isEmpty()) {
             return map;
@@ -302,6 +317,7 @@ public class OrderService {
         }
 
         if (!insufficient.isEmpty()) {
+            // Возвращаем список проблемных позиций в details.
             throw new ApiException(
                 ErrorCode.INSUFFICIENT_STOCK,
                 ErrorCode.INSUFFICIENT_STOCK.defaultMessage(),
@@ -326,6 +342,7 @@ public class OrderService {
             OrderItemEntity item = new OrderItemEntity();
             item.setProductId(entry.getKey());
             item.setQuantity(entry.getValue());
+            // Snapshot цены: дальше изменения Product.price не влияют на заказ.
             item.setPriceAtOrder(product.getPrice());
             items.add(item);
         }
@@ -358,6 +375,7 @@ public class OrderService {
         }
 
         BigDecimal discount = calculateDiscount(subtotal, entity);
+        // Увеличиваем usage только при успешном применении.
         entity.setCurrentUses(entity.getCurrentUses() + 1);
         BigDecimal total = subtotal.subtract(discount).setScale(2, RoundingMode.HALF_UP);
         return new Pricing(discount, total, entity);
@@ -379,6 +397,7 @@ public class OrderService {
         }
 
         if (subtotal.compareTo(lockedPromo.getMinOrderAmount()) < 0) {
+            // Если обновленный заказ уже не проходит min amount, снимаем промо.
             if (lockedPromo.getCurrentUses() > 0) {
                 lockedPromo.setCurrentUses(lockedPromo.getCurrentUses() - 1);
             }
@@ -393,6 +412,7 @@ public class OrderService {
     private BigDecimal calculateDiscount(BigDecimal subtotal, PromoCodeEntity promoCode) {
         BigDecimal discount;
         if (promoCode.getDiscountType() == com.gumbatali.marketplace.domain.model.DiscountType.PERCENTAGE) {
+            // Ограничиваем процентную скидку максимумом 70% от суммы заказа.
             BigDecimal raw = subtotal.multiply(promoCode.getDiscountValue()).divide(HUNDRED, 2, RoundingMode.HALF_UP);
             BigDecimal maxAllowed = subtotal.multiply(MAX_PERCENTAGE_DISCOUNT).divide(HUNDRED, 2, RoundingMode.HALF_UP);
             discount = raw.min(maxAllowed);
@@ -424,6 +444,7 @@ public class OrderService {
     }
 
     private void verifyOrderOwnership(AuthenticatedUser user, OrderEntity order) {
+        // ADMIN может смотреть/менять любой заказ.
         if (user.role() == UserRole.ADMIN) {
             return;
         }
@@ -463,6 +484,8 @@ public class OrderService {
     }
 
     private void validateStateTransition(OrderStatus from, OrderStatus to) {
+        // Разрешенные переходы по ТЗ:
+        // CREATED -> PAYMENT_PENDING -> PAID -> SHIPPED -> COMPLETED
         boolean allowed = switch (from) {
             case CREATED -> to == OrderStatus.PAYMENT_PENDING;
             case PAYMENT_PENDING -> to == OrderStatus.PAID;
