@@ -1,198 +1,199 @@
-# Отчет по домашнему заданию №2: Marketplace API
+# HW2: Marketplace API (OpenAPI + CRUD)
 
-## Общая информация
-Этот репозиторий фиксирует, как я реализовал ДЗ2 по теме `Marketplace: OpenAPI + CRUD`.
+Репозиторий подготовлен под защиту ДЗ2: быстрый запуск, E2E-демо, SQL-проверки, негативные сценарии.
 
-Цель работы:
-- спроектировать API в подходе `Contract First`;
-- реализовать CRUD для товаров и бизнес-логику заказов;
-- сделать проект воспроизводимым для запуска и E2E-проверки;
-- показать проверяемый результат не только через API, но и через `SELECT` в БД.
+## Стек
+- Java 21 + Spring Boot 3
+- OpenAPI contract-first + codegen
+- PostgreSQL 16 + Flyway
+- JWT auth + RBAC (`USER`, `SELLER`, `ADMIN`)
 
-Основная реализация находится в модуле [`marketplace-api`](marketplace-api).
-
-## Технологический стек
-- Язык: `Java 21`
-- Фреймворк: `Spring Boot 3`
-- Контракты: `OpenAPI 3.0.3`
-- Codegen: `openapi-generator-maven-plugin`
-- БД: `PostgreSQL 16` (через Docker Compose)
-- Миграции: `Flyway`
-- Безопасность: `Spring Security + JWT (access/refresh)`
-- Тесты: `JUnit 5 + Mockito`
-
-## Как я выполнял задание
-
-### Шаг 1. Зафиксировал контракт (Contract First)
-Сначала описал API в `marketplace.yaml`, а уже потом писал реализацию.
-
-Что включено в контракт:
+## Что уже реализовано
 - `/auth/register`, `/auth/login`, `/auth/refresh`
-- `/products` (`POST`, `GET`), `/products/{id}` (`GET`, `PUT`, `DELETE` soft-delete)
-- `/orders` (`POST`, `GET`), `/orders/{id}` (`GET`, `PUT`), `/orders/{id}/cancel` (`POST`)
-- `/orders/{id}/status` (`POST`) — дополнительный функционал
-- `/promo-codes` (`POST`)
+- `/products` CRUD + soft-delete (`ARCHIVED`)
+- `/orders` create/get/update/cancel
+- `GET /orders` (пагинация + фильтр)
+- `POST /orders/{id}/status` (state machine)
+- `/promo-codes` create
+- Единый формат ошибок: `error_code`, `message`, `details`
+- JSON-логирование API + `X-Request-Id`
 
-Файл: [`marketplace.yaml`](marketplace-api/src/main/resources/openapi/marketplace.yaml)
+---
 
-### Шаг 2. Настроил кодогенерацию
-Код контроллерных интерфейсов и DTO генерируется на фазе `generate-sources`.
-Ручные DTO для контрактов не использую.
+## 1) Запуск перед защитой
 
-Конфигурация: [`pom.xml`](marketplace-api/pom.xml)
-
-### Шаг 3. Поднял БД и миграции
-Схема создается Flyway-миграциями.
-
-Ключевые моменты:
-- таблицы: `users`, `products`, `orders`, `order_items`, `promo_codes`, `user_operations`, `refresh_tokens`
-- индекс `products.status`
-- soft-delete товара через перевод в `ARCHIVED`
-- `created_at/updated_at` ведутся автоматически
-
-Миграции: [`V1__init.sql`](marketplace-api/src/main/resources/db/migration/V1__init.sql)
-
-### Шаг 4. Реализовал бизнес-логику заказов
-В `OrderService` реализованы инварианты из задания:
-- rate limit по `user_operations`
-- запрет второго активного заказа
-- проверка доступности товара и стока
-- резервирование остатков в транзакции
-- snapshot `price_at_order`
-- проверка и применение промокода
-- пересчет заказа при обновлении
-- возврат стока/промокода при отмене
-
-Сервис: [`OrderService.java`](marketplace-api/src/main/java/com/gumbatali/marketplace/service/OrderService.java)
-
-### Шаг 5. Добавил auth + RBAC + единый формат ошибок
-- JWT access/refresh
-- роли: `USER`, `SELLER`, `ADMIN`
-- единый контракт ошибок `ErrorResponse`
-- коды ошибок синхронизированы между OpenAPI и кодом
-
-## Что реализовано по критериям
-
-1. OpenAPI CRUD для `Product`: выполнено.
-2. Схемы `ProductCreate/ProductUpdate/ProductResponse`: выполнено.
-3. Codegen из OpenAPI: выполнено.
-4. PostgreSQL + Flyway + soft-delete + индекс: выполнено.
-5. Контрактная обработка ошибок: выполнено.
-6. Контрактная валидация: выполнено.
-7. Сложная логика заказов: выполнено.
-8. Логирование API в JSON + `X-Request-Id`: выполнено.
-9. JWT-авторизация: выполнено.
-10. RBAC: выполнено.
-
-## Дополнительный функционал (сверх базового минимума)
-Добавлено:
-- `GET /orders` — пагинация + фильтр по статусу (`USER` видит свои, `ADMIN` все)
-- `POST /orders/{id}/status` — явный переход по state machine
-  - `CREATED -> PAYMENT_PENDING -> PAID -> SHIPPED -> COMPLETED`
-  - недопустимые переходы дают `INVALID_STATE_TRANSITION`
-
-Изменения в коде:
-- [`OrderRepository.java`](marketplace-api/src/main/java/com/gumbatali/marketplace/domain/repository/OrderRepository.java)
-- [`OrderService.java`](marketplace-api/src/main/java/com/gumbatali/marketplace/service/OrderService.java)
-- [`OrdersController.java`](marketplace-api/src/main/java/com/gumbatali/marketplace/web/OrdersController.java)
-- [`OrderServiceTest.java`](marketplace-api/src/test/java/com/gumbatali/marketplace/service/OrderServiceTest.java)
-
-## Структура модуля
-- `marketplace-api/src/main/resources/openapi` — контракт
-- `marketplace-api/src/main/resources/db/migration` — миграции
-- `marketplace-api/src/main/java/.../web` — контроллеры
-- `marketplace-api/src/main/java/.../service` — бизнес-логика
-- `marketplace-api/src/main/java/.../security` — JWT, фильтры, доступ
-- `marketplace-api/src/main/java/.../web/error` — обработка ошибок
-- `marketplace-api/src/test/java/.../service` — unit-тесты
-
-## Запуск
-
-### 1) Проверка проекта
 ```bash
-cd marketplace-api
-./mvnw clean test
-```
-
-### 2) Запуск в Docker
-```bash
+cd "/Users/gumbatali/work/soa-hw-marketplace-architecture-hw2-readme/marketplace-api"
 docker compose down -v
 docker compose up --build
 ```
 
-Порты в этой ветке:
-- API: `http://localhost:8081`
-- PostgreSQL: `localhost:5433`
+В отдельном терминале проверь:
 
-Swagger:
+```bash
+cd "/Users/gumbatali/work/soa-hw-marketplace-architecture-hw2-readme/marketplace-api"
+docker compose ps
+```
+
+Ожидается:
+- `marketplace-api` в `Up`
+- `marketplace-postgres` в `Up (healthy)`
+
+Swagger/контракт:
 - `http://localhost:8081/swagger-ui/index.html`
+- `http://localhost:8081/v3/api-docs`
 
-## E2E-сценарий для демонстрации
+---
 
-### 1) Регистрация пользователей
+## 2) E2E-сценарий (как показывать ассистенту)
+
+Все команды ниже вставляются **без строк-комментариев `# ...`**.
+
 ```bash
-curl -s -X POST http://localhost:8081/auth/register -H 'Content-Type: application/json' -d '{"username":"admin","password":"Strong123","role":"ADMIN"}'
-curl -s -X POST http://localhost:8081/auth/register -H 'Content-Type: application/json' -d '{"username":"seller1","password":"Strong123","role":"SELLER"}'
-curl -s -X POST http://localhost:8081/auth/register -H 'Content-Type: application/json' -d '{"username":"user1","password":"Strong123","role":"USER"}'
+BASE="http://localhost:8081"
+SUF=$(date +%s)
+SELLER="seller_${SUF}"
+USERN="user_${SUF}"
+PASS="Strong123"
 ```
 
-### 2) Логин
+### 2.1 Регистрация
+
 ```bash
-SELLER_TOKEN=$(curl -s -X POST http://localhost:8081/auth/login -H 'Content-Type: application/json' -d '{"username":"seller1","password":"Strong123"}' | jq -r .access_token)
-USER_TOKEN=$(curl -s -X POST http://localhost:8081/auth/login -H 'Content-Type: application/json' -d '{"username":"user1","password":"Strong123"}' | jq -r .access_token)
+curl -s -X POST "$BASE/auth/register" -H 'Content-Type: application/json' \
+-d "{\"username\":\"$SELLER\",\"password\":\"$PASS\",\"role\":\"SELLER\"}"
+
+curl -s -X POST "$BASE/auth/register" -H 'Content-Type: application/json' \
+-d "{\"username\":\"$USERN\",\"password\":\"$PASS\",\"role\":\"USER\"}"
 ```
 
-### 3) Создание товара и промокода
+### 2.2 Логин и токены (без `jq`)
+
 ```bash
-PRODUCT_ID=$(curl -s -X POST http://localhost:8081/products \
+SELLER_LOGIN=$(curl -s -X POST "$BASE/auth/login" -H 'Content-Type: application/json' \
+-d "{\"username\":\"$SELLER\",\"password\":\"$PASS\"}")
+
+USER_LOGIN=$(curl -s -X POST "$BASE/auth/login" -H 'Content-Type: application/json' \
+-d "{\"username\":\"$USERN\",\"password\":\"$PASS\"}")
+
+SELLER_TOKEN=$(echo "$SELLER_LOGIN" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+USER_TOKEN=$(echo "$USER_LOGIN" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+```
+
+### 2.3 Создание товара
+
+```bash
+PROD_RESP=$(curl -s -X POST "$BASE/products" \
   -H "Authorization: Bearer $SELLER_TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"name":"iPhone 15","description":"128GB","price":1000.00,"stock":10,"category":"smartphones","status":"ACTIVE"}' | jq -r .id)
+  -d '{"name":"iPhone 15","description":"128GB","price":1000.00,"stock":10,"category":"smartphones","status":"ACTIVE"}')
 
-curl -s -X POST http://localhost:8081/promo-codes \
-  -H "Authorization: Bearer $SELLER_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"code":"PROMO10","discount_type":"PERCENTAGE","discount_value":10,"min_order_amount":100,"max_uses":100,"valid_from":"2025-01-01T00:00:00Z","valid_until":"2030-01-01T00:00:00Z","active":true}'
+echo "$PROD_RESP"
+PRODUCT_ID=$(echo "$PROD_RESP" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
 ```
 
-### 4) Создание заказа
+### 2.4 Создание промокода
+
 ```bash
-ORDER_ID=$(curl -s -X POST http://localhost:8081/orders \
+PROMO_CODE="PROMO${SUF}"
+
+PROMO_RESP=$(curl -s -X POST "$BASE/promo-codes" \
+  -H "Authorization: Bearer $SELLER_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d "{\"code\":\"$PROMO_CODE\",\"discount_type\":\"PERCENTAGE\",\"discount_value\":10,\"min_order_amount\":100,\"max_uses\":100,\"valid_from\":\"2025-01-01T00:00:00Z\",\"valid_until\":\"2030-01-01T00:00:00Z\",\"active\":true}")
+
+echo "$PROMO_RESP"
+```
+
+### 2.5 Создание заказа
+
+```bash
+ORDER_RESP=$(curl -s -X POST "$BASE/orders" \
   -H "Authorization: Bearer $USER_TOKEN" \
   -H 'Content-Type: application/json' \
-  -d "{\"items\":[{\"product_id\":\"$PRODUCT_ID\",\"quantity\":1}],\"promo_code\":\"PROMO10\"}" | jq -r .id)
+  -d "{\"items\":[{\"product_id\":\"$PRODUCT_ID\",\"quantity\":1}],\"promo_code\":\"$PROMO_CODE\"}")
+
+echo "$ORDER_RESP"
+ORDER_ID=$(echo "$ORDER_RESP" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
 ```
 
-### 5) Демонстрация дополнительного функционала
+### 2.6 Проверка бизнес-операций
+
 ```bash
-curl -s -X GET "http://localhost:8081/orders?page=0&size=20" \
+curl -s -X GET "$BASE/orders?page=0&size=20" \
   -H "Authorization: Bearer $USER_TOKEN"
 
-curl -s -X POST "http://localhost:8081/orders/$ORDER_ID/status" \
+curl -s -X POST "$BASE/orders/$ORDER_ID/status" \
   -H "Authorization: Bearer $USER_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"next_status":"PAYMENT_PENDING"}'
-```
 
-### 6) Отмена заказа
-```bash
-curl -s -X POST "http://localhost:8081/orders/$ORDER_ID/cancel" \
+curl -s -X POST "$BASE/orders/$ORDER_ID/cancel" \
   -H "Authorization: Bearer $USER_TOKEN"
 ```
 
-## Что показать из БД на демонстрации
-```sql
-SELECT id, username, role, created_at FROM users;
-SELECT id, name, stock, status, seller_id FROM products;
-SELECT id, user_id, status, total_amount, discount_amount, promo_code_id FROM orders;
-SELECT id, order_id, product_id, quantity, price_at_order FROM order_items;
-SELECT id, code, current_uses, max_uses, active FROM promo_codes;
-SELECT id, user_id, operation_type, created_at FROM user_operations;
+---
+
+## 3) SQL-проверки в БД (обязательно на защите)
+
+```bash
+docker exec marketplace-postgres psql -U marketplace -d marketplace -c "SELECT username, role, created_at FROM users ORDER BY created_at DESC LIMIT 5;"
+docker exec marketplace-postgres psql -U marketplace -d marketplace -c "SELECT id, name, stock, status, seller_id FROM products ORDER BY created_at DESC LIMIT 5;"
+docker exec marketplace-postgres psql -U marketplace -d marketplace -c "SELECT id, user_id, status, total_amount, discount_amount, promo_code_id FROM orders ORDER BY created_at DESC LIMIT 5;"
+docker exec marketplace-postgres psql -U marketplace -d marketplace -c "SELECT order_id, product_id, quantity, price_at_order FROM order_items ORDER BY id DESC LIMIT 10;"
+docker exec marketplace-postgres psql -U marketplace -d marketplace -c "SELECT code, current_uses, max_uses, active FROM promo_codes ORDER BY id DESC LIMIT 5;"
+docker exec marketplace-postgres psql -U marketplace -d marketplace -c "SELECT user_id, operation_type, created_at FROM user_operations ORDER BY created_at DESC LIMIT 10;"
 ```
 
-## Что удобно объяснить при разборе кода
-- Почему `Contract First` уменьшает расхождения между документацией и реализацией.
-- Почему `stateless` + JWT упрощает горизонтальное масштабирование API.
-- Почему для заказов нужна транзакционность (stock, order_items, promo usage).
-- Почему soft-delete (`ARCHIVED`) лучше физического удаления для аудита.
-- Где проверяются роли и ownership.
+---
+
+## 4) Альтернативные сценарии (быстрые команды)
+
+1. Валидация payload:
+```bash
+curl -s -X POST "$BASE/auth/login" -H 'Content-Type: application/json' -d '{"username":"a","password":"1"}'
+```
+Ожидается: `VALIDATION_ERROR`.
+
+2. Нет токена:
+```bash
+curl -s -X POST "$BASE/orders" -H 'Content-Type: application/json' -d '{"items":[]}'
+```
+Ожидается: `TOKEN_INVALID`.
+
+3. Недостаточно прав (`USER` -> create product):
+```bash
+curl -s -X POST "$BASE/products" \
+  -H "Authorization: Bearer $USER_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"X","price":1.0,"stock":1,"category":"c","status":"ACTIVE"}'
+```
+Ожидается: `ACCESS_DENIED`.
+
+4. Недопустимый переход статуса:
+```bash
+curl -s -X POST "$BASE/orders/$ORDER_ID/status" \
+  -H "Authorization: Bearer $USER_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"next_status":"SHIPPED"}'
+```
+Ожидается: `INVALID_STATE_TRANSITION`.
+
+---
+
+## 5) Что открыть в коде на разборе
+- Контракт: `marketplace-api/src/main/resources/openapi/marketplace.yaml`
+- Миграции: `marketplace-api/src/main/resources/db/migration/V1__init.sql`
+- Заказы: `marketplace-api/src/main/java/com/gumbatali/marketplace/service/OrderService.java`
+- Security: `marketplace-api/src/main/java/com/gumbatali/marketplace/security/`
+- Ошибки: `marketplace-api/src/main/java/com/gumbatali/marketplace/web/error/GlobalExceptionHandler.java`
+- Логирование: `marketplace-api/src/main/java/com/gumbatali/marketplace/web/ApiLoggingFilter.java`
+
+---
+
+## 6) Короткие ответы для теории
+- REST stateless: сервер не хранит сессию, каждый запрос самодостаточен (JWT).
+- Contract-first: сначала OpenAPI, потом код; снижает рассинхрон между клиентом и сервером.
+- Идемпотентность: `GET/PUT/DELETE` по смыслу идемпотентны, `POST` обычно нет.
+- Почему транзакции в заказах: stock/order/items/promo должны изменяться атомарно.
+- Почему soft-delete: аудит и восстановляемость, вместо физического удаления.

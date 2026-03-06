@@ -16,6 +16,8 @@ import java.time.ZoneOffset;
 import java.util.UUID;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Getter
 @Setter
@@ -31,7 +33,8 @@ public class PromoCodeEntity {
     private String code;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "discount_type", nullable = false)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(name = "discount_type", nullable = false, columnDefinition = "discount_type")
     private DiscountType discountType;
 
     @Column(name = "discount_value", nullable = false, precision = 12, scale = 2)

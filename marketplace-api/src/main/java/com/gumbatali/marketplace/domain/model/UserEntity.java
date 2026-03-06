@@ -15,6 +15,8 @@ import java.time.ZoneOffset;
 import java.util.UUID;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Getter
 @Setter
@@ -33,7 +35,8 @@ public class UserEntity {
     private String passwordHash;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "role", nullable = false)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(name = "role", nullable = false, columnDefinition = "user_role")
     private UserRole role;
 
     @Column(name = "created_at", nullable = false)

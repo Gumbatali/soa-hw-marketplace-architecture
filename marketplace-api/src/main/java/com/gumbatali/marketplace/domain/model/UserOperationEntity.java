@@ -14,6 +14,8 @@ import java.time.ZoneOffset;
 import java.util.UUID;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Getter
 @Setter
@@ -29,7 +31,8 @@ public class UserOperationEntity {
     private UUID userId;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "operation_type", nullable = false)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(name = "operation_type", nullable = false, columnDefinition = "operation_type")
     private UserOperationType operationType;
 
     @Column(name = "created_at", nullable = false)
