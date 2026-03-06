@@ -2,7 +2,10 @@ package com.gumbatali.marketplace.web;
 
 import com.gumbatali.marketplace.generated.api.OrdersApi;
 import com.gumbatali.marketplace.generated.model.OrderCreateRequest;
+import com.gumbatali.marketplace.generated.model.OrderPageResponse;
 import com.gumbatali.marketplace.generated.model.OrderResponse;
+import com.gumbatali.marketplace.generated.model.OrderStatus;
+import com.gumbatali.marketplace.generated.model.OrderStatusUpdateRequest;
 import com.gumbatali.marketplace.generated.model.OrderUpdateRequest;
 import com.gumbatali.marketplace.security.SecurityUtils;
 import com.gumbatali.marketplace.service.OrderService;
@@ -30,6 +33,12 @@ public class OrdersController implements OrdersApi {
 
     @Override
     @PreAuthorize("hasAnyRole('USER','ADMIN')")
+    public ResponseEntity<OrderPageResponse> listOrders(Integer page, Integer size, OrderStatus status) {
+        return ResponseEntity.ok(orderService.listOrders(page, size, status, SecurityUtils.currentUser()));
+    }
+
+    @Override
+    @PreAuthorize("hasAnyRole('USER','ADMIN')")
     public ResponseEntity<OrderResponse> getOrderById(UUID id) {
         return ResponseEntity.ok(orderService.getOrder(id, SecurityUtils.currentUser()));
     }
@@ -44,5 +53,11 @@ public class OrdersController implements OrdersApi {
     @PreAuthorize("hasAnyRole('USER','ADMIN')")
     public ResponseEntity<OrderResponse> cancelOrder(UUID id) {
         return ResponseEntity.ok(orderService.cancelOrder(id, SecurityUtils.currentUser()));
+    }
+
+    @Override
+    @PreAuthorize("hasAnyRole('USER','ADMIN')")
+    public ResponseEntity<OrderResponse> updateOrderStatus(UUID id, OrderStatusUpdateRequest orderStatusUpdateRequest) {
+        return ResponseEntity.ok(orderService.updateOrderStatus(id, orderStatusUpdateRequest, SecurityUtils.currentUser()));
     }
 }

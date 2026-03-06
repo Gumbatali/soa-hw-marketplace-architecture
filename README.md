@@ -1,222 +1,186 @@
-# ДЗ2: Marketplace API (OpenAPI + CRUD)
+# Отчет по домашнему заданию №2: Marketplace API
 
-Эта ветка (`hw2`) — рабочая история выполнения второго домашнего задания: что именно было сделано, в какой последовательности и где это лежит в коде.
+## Общая информация
+Этот репозиторий фиксирует, как я реализовал ДЗ2 по теме `Marketplace: OpenAPI + CRUD`.
 
-## Зачем сделан этот репозиторий
+Цель работы:
+- спроектировать API в подходе `Contract First`;
+- реализовать CRUD для товаров и бизнес-логику заказов;
+- сделать проект воспроизводимым для запуска и E2E-проверки;
+- показать проверяемый результат не только через API, но и через `SELECT` в БД.
 
-Цель задания — спроектировать и реализовать API маркетплейса в контрактном подходе:
-- сначала формализовать контракт (OpenAPI),
-- затем реализовать бизнес-логику,
-- обеспечить воспроизводимый запуск,
-- показать проверяемый результат на E2E и уровне БД.
+Основная реализация находится в модуле [`marketplace-api`](marketplace-api).
 
-## Ключевые решения
+## Технологический стек
+- Язык: `Java 21`
+- Фреймворк: `Spring Boot 3`
+- Контракты: `OpenAPI 3.0.3`
+- Codegen: `openapi-generator-maven-plugin`
+- БД: `PostgreSQL 16` (через Docker Compose)
+- Миграции: `Flyway`
+- Безопасность: `Spring Security + JWT (access/refresh)`
+- Тесты: `JUnit 5 + Mockito`
 
-- **Contract-first**: сначала OpenAPI-спецификация, затем код.
-- **REST-ресурсная модель**: `/products`, `/orders`, `/promo-codes`, `/auth`.
-- **Stateless**: каждый защищённый запрос самодостаточен (JWT в каждом запросе).
-- **Единый формат ошибок**: `error_code`, `message`, `details`.
-- **Транзакционные инварианты** для заказов: проверка остатков, резервирование, пересчёты, state transitions.
+## Как я выполнял задание
 
-## Технический стек
+### Шаг 1. Зафиксировал контракт (Contract First)
+Сначала описал API в `marketplace.yaml`, а уже потом писал реализацию.
 
-- Java 21 + Spring Boot
-- OpenAPI + code generation
-- PostgreSQL + Flyway
-- JWT (access/refresh)
-- Роли: `USER`, `SELLER`, `ADMIN`
+Что включено в контракт:
+- `/auth/register`, `/auth/login`, `/auth/refresh`
+- `/products` (`POST`, `GET`), `/products/{id}` (`GET`, `PUT`, `DELETE` soft-delete)
+- `/orders` (`POST`, `GET`), `/orders/{id}` (`GET`, `PUT`), `/orders/{id}/cancel` (`POST`)
+- `/orders/{id}/status` (`POST`) — дополнительный функционал
+- `/promo-codes` (`POST`)
 
-Порт API по умолчанию в этой ветке: `http://localhost:8081`.
+Файл: [`marketplace.yaml`](marketplace-api/src/main/resources/openapi/marketplace.yaml)
 
----
+### Шаг 2. Настроил кодогенерацию
+Код контроллерных интерфейсов и DTO генерируется на фазе `generate-sources`.
+Ручные DTO для контрактов не использую.
 
-## Как выполнялось ДЗ (прозрачная последовательность)
+Конфигурация: [`pom.xml`](marketplace-api/pom.xml)
 
-### Этап 1. Спецификация Product CRUD
+### Шаг 3. Поднял БД и миграции
+Схема создается Flyway-миграциями.
 
-**Что сделано**
-- Описаны endpoint’ы:
-  - `POST /products`
-  - `GET /products/{id}`
-  - `GET /products` (пагинация и фильтрация)
-  - `PUT /products/{id}`
-  - `DELETE /products/{id}` (мягкое удаление)
+Ключевые моменты:
+- таблицы: `users`, `products`, `orders`, `order_items`, `promo_codes`, `user_operations`, `refresh_tokens`
+- индекс `products.status`
+- soft-delete товара через перевод в `ARCHIVED`
+- `created_at/updated_at` ведутся автоматически
 
-**Почему так**
-- Это базовый REST CRUD и ожидаемая семантика методов.
+Миграции: [`V1__init.sql`](marketplace-api/src/main/resources/db/migration/V1__init.sql)
 
-**Где смотреть**
-- `marketplace-api/src/main/resources/openapi/marketplace.yaml`
+### Шаг 4. Реализовал бизнес-логику заказов
+В `OrderService` реализованы инварианты из задания:
+- rate limit по `user_operations`
+- запрет второго активного заказа
+- проверка доступности товара и стока
+- резервирование остатков в транзакции
+- snapshot `price_at_order`
+- проверка и применение промокода
+- пересчет заказа при обновлении
+- возврат стока/промокода при отмене
 
-### Этап 2. Формализация схем данных
+Сервис: [`OrderService.java`](marketplace-api/src/main/java/com/gumbatali/marketplace/service/OrderService.java)
 
-**Что сделано**
-- Выделены отдельные схемы: `ProductCreate`, `ProductUpdate`, `ProductResponse`.
-- Указаны `required`, `nullable`, `enum`, `format`.
-- Добавлены ограничения полей.
+### Шаг 5. Добавил auth + RBAC + единый формат ошибок
+- JWT access/refresh
+- роли: `USER`, `SELLER`, `ADMIN`
+- единый контракт ошибок `ErrorResponse`
+- коды ошибок синхронизированы между OpenAPI и кодом
 
-**Почему так**
-- Разделение create/update/response делает контракт понятнее и снижает риск ошибок интеграции.
+## Что реализовано по критериям
 
-**Где смотреть**
-- `components/schemas` в `marketplace.yaml`
+1. OpenAPI CRUD для `Product`: выполнено.
+2. Схемы `ProductCreate/ProductUpdate/ProductResponse`: выполнено.
+3. Codegen из OpenAPI: выполнено.
+4. PostgreSQL + Flyway + soft-delete + индекс: выполнено.
+5. Контрактная обработка ошибок: выполнено.
+6. Контрактная валидация: выполнено.
+7. Сложная логика заказов: выполнено.
+8. Логирование API в JSON + `X-Request-Id`: выполнено.
+9. JWT-авторизация: выполнено.
+10. RBAC: выполнено.
 
-### Этап 3. Кодогенерация из OpenAPI
+## Дополнительный функционал (сверх базового минимума)
+Добавлено:
+- `GET /orders` — пагинация + фильтр по статусу (`USER` видит свои, `ADMIN` все)
+- `POST /orders/{id}/status` — явный переход по state machine
+  - `CREATED -> PAYMENT_PENDING -> PAID -> SHIPPED -> COMPLETED`
+  - недопустимые переходы дают `INVALID_STATE_TRANSITION`
 
-**Что сделано**
-- Настроен генератор интерфейсов API и моделей.
-- Ручные DTO для этих контрактов не используются.
+Изменения в коде:
+- [`OrderRepository.java`](marketplace-api/src/main/java/com/gumbatali/marketplace/domain/repository/OrderRepository.java)
+- [`OrderService.java`](marketplace-api/src/main/java/com/gumbatali/marketplace/service/OrderService.java)
+- [`OrdersController.java`](marketplace-api/src/main/java/com/gumbatali/marketplace/web/OrdersController.java)
+- [`OrderServiceTest.java`](marketplace-api/src/test/java/com/gumbatali/marketplace/service/OrderServiceTest.java)
 
-**Почему так**
-- Контракт и код не расходятся, сборка воспроизводима одной командой.
+## Структура модуля
+- `marketplace-api/src/main/resources/openapi` — контракт
+- `marketplace-api/src/main/resources/db/migration` — миграции
+- `marketplace-api/src/main/java/.../web` — контроллеры
+- `marketplace-api/src/main/java/.../service` — бизнес-логика
+- `marketplace-api/src/main/java/.../security` — JWT, фильтры, доступ
+- `marketplace-api/src/main/java/.../web/error` — обработка ошибок
+- `marketplace-api/src/test/java/.../service` — unit-тесты
 
-**Где смотреть**
-- `marketplace-api/pom.xml` (`openapi-generator-maven-plugin`)
-- `target/generated-sources/openapi`
+## Запуск
 
-### Этап 4. PostgreSQL + миграции + базовый CRUD
-
-**Что сделано**
-- Подключён PostgreSQL.
-- Схема заведена через Flyway.
-- Добавлен индекс `products.status`.
-- `DELETE /products/{id}` реализован как `ARCHIVED`.
-
-**Почему так**
-- Выполняются требования задания, плюс это удобнее для аудита/восстановления данных.
-
-**Где смотреть**
-- `marketplace-api/src/main/resources/db/migration/V1__init.sql`
-- `ProductService#deleteProduct`
-
-### Этап 5. Контрактная обработка ошибок
-
-**Что сделано**
-- Единая структура ошибок: `error_code`, `message`, `details`.
-- Коды ошибок синхронизированы с OpenAPI и реализацией.
-
-**Почему так**
-- Клиентам проще обрабатывать ошибки программно и предсказуемо.
-
-**Где смотреть**
-- OpenAPI: `ErrorResponse`, `ErrorCode`
-- Код: `common/error/*`, `web/error/GlobalExceptionHandler.java`
-
-### Этап 6. Контрактная валидация входных данных
-
-**Что сделано**
-- Ограничения зафиксированы в OpenAPI.
-- Невалидные запросы отсекаются до бизнес-логики.
-- Возвращается `VALIDATION_ERROR` с детализацией по полям.
-
-**Почему так**
-- Предсказуемое поведение API и меньше ошибок в доменной логике.
-
-**Где смотреть**
-- `marketplace.yaml` (constraints)
-- generated contracts с `@Valid`
-- `GlobalExceptionHandler`
-
-### Этап 7. Бизнес-логика заказов
-
-**Что сделано**
-- `POST /orders`: rate-limit, active-order guard, проверка каталога и stock, резервирование, snapshot цен, promo-расчёт.
-- `PUT /orders/{id}`: ownership, state check, возврат старых резервов, резервы новых, пересчёт promo.
-- `POST /orders/{id}/cancel`: ownership, допустимые состояния, возврат stock, rollback promo usage.
-
-**Почему так**
-- Все инварианты из ТЗ соблюдаются в транзакциях.
-
-**Где смотреть**
-- `service/OrderService.java`
-- таблицы в `V1__init.sql`
-
-### Этап 8. Логирование API
-
-**Что сделано**
-- JSON-лог каждого запроса.
-- Пишутся поля: `request_id`, `method`, `endpoint`, `status_code`, `duration_ms`, `user_id`, `timestamp`.
-- Для `POST/PUT/DELETE` логируется body с маскированием чувствительных данных.
-- `X-Request-Id` возвращается в ответе.
-
-**Где смотреть**
-- `web/ApiLoggingFilter.java`
-
-### Этап 9. JWT-авторизация
-
-**Что сделано**
-- `/auth/register`, `/auth/login`, `/auth/refresh`.
-- Access и refresh токены.
-- Ошибки: `TOKEN_INVALID`, `TOKEN_EXPIRED`, `REFRESH_TOKEN_INVALID`.
-
-**Почему так**
-- Стандартная модель короткоживущего access и долгоживущего refresh.
-
-**Где смотреть**
-- `service/AuthService.java`
-- `security/JwtService.java`, `JwtAuthenticationFilter.java`, `SecurityConfig.java`
-
-### Этап 10. Ролевая модель доступа
-
-**Что сделано**
-- Реализованы роли `USER`, `SELLER`, `ADMIN`.
-- Ограничения по матрице доступа.
-- `SELLER` управляет только своими товарами через `seller_id`.
-- Проверка владения заказом для user-операций.
-
-**Где смотреть**
-- `security/SecurityConfig.java`
-- `@PreAuthorize` в контроллерах
-- ownership checks в сервисах
-
----
-
-## Как воспроизвести у себя
-
+### 1) Проверка проекта
 ```bash
 cd marketplace-api
 ./mvnw clean test
+```
+
+### 2) Запуск в Docker
+```bash
+docker compose down -v
 docker compose up --build
 ```
 
-API: `http://localhost:8081`
+Порты в этой ветке:
+- API: `http://localhost:8081`
+- PostgreSQL: `localhost:5433`
 
----
+Swagger:
+- `http://localhost:8081/swagger-ui/index.html`
 
-## E2E: рабочий сквозной сценарий
+## E2E-сценарий для демонстрации
 
-### 1) Регистрация и логин
-
+### 1) Регистрация пользователей
 ```bash
-curl -X POST http://localhost:8081/auth/register -H 'Content-Type: application/json' -d '{"username":"admin","password":"Strong123","role":"ADMIN"}'
-curl -X POST http://localhost:8081/auth/register -H 'Content-Type: application/json' -d '{"username":"seller1","password":"Strong123","role":"SELLER"}'
-curl -X POST http://localhost:8081/auth/register -H 'Content-Type: application/json' -d '{"username":"user1","password":"Strong123","role":"USER"}'
+curl -s -X POST http://localhost:8081/auth/register -H 'Content-Type: application/json' -d '{"username":"admin","password":"Strong123","role":"ADMIN"}'
+curl -s -X POST http://localhost:8081/auth/register -H 'Content-Type: application/json' -d '{"username":"seller1","password":"Strong123","role":"SELLER"}'
+curl -s -X POST http://localhost:8081/auth/register -H 'Content-Type: application/json' -d '{"username":"user1","password":"Strong123","role":"USER"}'
+```
 
+### 2) Логин
+```bash
 SELLER_TOKEN=$(curl -s -X POST http://localhost:8081/auth/login -H 'Content-Type: application/json' -d '{"username":"seller1","password":"Strong123"}' | jq -r .access_token)
 USER_TOKEN=$(curl -s -X POST http://localhost:8081/auth/login -H 'Content-Type: application/json' -d '{"username":"user1","password":"Strong123"}' | jq -r .access_token)
 ```
 
-### 2) Создание товара, промокода, заказа
-
+### 3) Создание товара и промокода
 ```bash
 PRODUCT_ID=$(curl -s -X POST http://localhost:8081/products \
   -H "Authorization: Bearer $SELLER_TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"name":"Laptop","description":"16GB RAM","price":1200.00,"stock":10,"category":"electronics","status":"ACTIVE"}' | jq -r .id)
+  -d '{"name":"iPhone 15","description":"128GB","price":1000.00,"stock":10,"category":"smartphones","status":"ACTIVE"}' | jq -r .id)
 
-curl -X POST http://localhost:8081/promo-codes \
+curl -s -X POST http://localhost:8081/promo-codes \
   -H "Authorization: Bearer $SELLER_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"code":"PROMO10","discount_type":"PERCENTAGE","discount_value":10,"min_order_amount":100,"max_uses":100,"valid_from":"2025-01-01T00:00:00Z","valid_until":"2030-01-01T00:00:00Z","active":true}'
+```
 
+### 4) Создание заказа
+```bash
 ORDER_ID=$(curl -s -X POST http://localhost:8081/orders \
   -H "Authorization: Bearer $USER_TOKEN" \
   -H 'Content-Type: application/json' \
-  -d "{\"items\":[{\"product_id\":\"$PRODUCT_ID\",\"quantity\":2}],\"promo_code\":\"PROMO10\"}" | jq -r .id)
+  -d "{\"items\":[{\"product_id\":\"$PRODUCT_ID\",\"quantity\":1}],\"promo_code\":\"PROMO10\"}" | jq -r .id)
 ```
 
-### 3) Проверка состояния БД
+### 5) Демонстрация дополнительного функционала
+```bash
+curl -s -X GET "http://localhost:8081/orders?page=0&size=20" \
+  -H "Authorization: Bearer $USER_TOKEN"
 
+curl -s -X POST "http://localhost:8081/orders/$ORDER_ID/status" \
+  -H "Authorization: Bearer $USER_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"next_status":"PAYMENT_PENDING"}'
+```
+
+### 6) Отмена заказа
+```bash
+curl -s -X POST "http://localhost:8081/orders/$ORDER_ID/cancel" \
+  -H "Authorization: Bearer $USER_TOKEN"
+```
+
+## Что показать из БД на демонстрации
 ```sql
 SELECT id, username, role, created_at FROM users;
 SELECT id, name, stock, status, seller_id FROM products;
@@ -226,23 +190,9 @@ SELECT id, code, current_uses, max_uses, active FROM promo_codes;
 SELECT id, user_id, operation_type, created_at FROM user_operations;
 ```
 
----
-
-## Негативные сценарии, которые стоит прогнать
-
-- Невалидный payload → `VALIDATION_ERROR`
-- Недостаточный stock → `INSUFFICIENT_STOCK`
-- Слишком частое создание/обновление заказа → `ORDER_LIMIT_EXCEEDED`
-- Недостаточные права → `ACCESS_DENIED`
-- Невалидный/просроченный access token → `TOKEN_INVALID` / `TOKEN_EXPIRED`
-
----
-
-## Карта кода
-
-- OpenAPI: `marketplace-api/src/main/resources/openapi/marketplace.yaml`
-- Миграции: `marketplace-api/src/main/resources/db/migration/V1__init.sql`
-- Security/JWT/RBAC: `marketplace-api/src/main/java/com/gumbatali/marketplace/security/*`
-- Ошибки: `marketplace-api/src/main/java/com/gumbatali/marketplace/web/error/GlobalExceptionHandler.java`
-- Логика заказов: `marketplace-api/src/main/java/com/gumbatali/marketplace/service/OrderService.java`
-- Логирование API: `marketplace-api/src/main/java/com/gumbatali/marketplace/web/ApiLoggingFilter.java`
+## Что удобно объяснить при разборе кода
+- Почему `Contract First` уменьшает расхождения между документацией и реализацией.
+- Почему `stateless` + JWT упрощает горизонтальное масштабирование API.
+- Почему для заказов нужна транзакционность (stock, order_items, promo usage).
+- Почему soft-delete (`ARCHIVED`) лучше физического удаления для аудита.
+- Где проверяются роли и ownership.

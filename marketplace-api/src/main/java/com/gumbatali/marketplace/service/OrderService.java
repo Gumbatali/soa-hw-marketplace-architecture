@@ -18,7 +18,9 @@ import com.gumbatali.marketplace.domain.repository.PromoCodeRepository;
 import com.gumbatali.marketplace.domain.repository.UserOperationRepository;
 import com.gumbatali.marketplace.generated.model.OrderCreateRequest;
 import com.gumbatali.marketplace.generated.model.OrderItemRequest;
+import com.gumbatali.marketplace.generated.model.OrderPageResponse;
 import com.gumbatali.marketplace.generated.model.OrderResponse;
+import com.gumbatali.marketplace.generated.model.OrderStatusUpdateRequest;
 import com.gumbatali.marketplace.generated.model.OrderUpdateRequest;
 import com.gumbatali.marketplace.security.AuthenticatedUser;
 import java.math.BigDecimal;
@@ -32,6 +34,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -109,6 +115,36 @@ public class OrderService {
             .orElseThrow(() -> new ApiException(ErrorCode.ORDER_NOT_FOUND));
         verifyOrderOwnership(user, order);
         return apiMapper.toOrderResponse(order);
+    }
+
+    @Transactional(readOnly = true)
+    public OrderPageResponse listOrders(Integer page,
+                                        Integer size,
+                                        com.gumbatali.marketplace.generated.model.OrderStatus status,
+                                        AuthenticatedUser user) {
+        if (user.role() == UserRole.SELLER) {
+            throw new ApiException(ErrorCode.ACCESS_DENIED);
+        }
+
+        Specification<OrderEntity> spec = Specification.where(null);
+        if (user.role() == UserRole.USER) {
+            spec = spec.and((root, query, cb) -> cb.equal(root.get("userId"), user.id()));
+        }
+        if (status != null) {
+            spec = spec.and((root, query, cb) -> cb.equal(root.get("status"), apiMapper.toDomainOrderStatus(status)));
+        }
+
+        Page<OrderEntity> result = orderRepository.findAll(
+            spec,
+            PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"))
+        );
+
+        OrderPageResponse response = new OrderPageResponse();
+        response.setContent(result.getContent().stream().map(apiMapper::toOrderResponse).toList());
+        response.setTotalElements(result.getTotalElements());
+        response.setPage(page);
+        response.setSize(size);
+        return response;
     }
 
     @Transactional
@@ -200,6 +236,26 @@ public class OrderService {
         }
 
         order.setStatus(OrderStatus.CANCELED);
+        OrderEntity saved = orderRepository.save(order);
+        return apiMapper.toOrderResponse(saved);
+    }
+
+    @Transactional
+    public OrderResponse updateOrderStatus(UUID orderId,
+                                           OrderStatusUpdateRequest request,
+                                           AuthenticatedUser user) {
+        if (user.role() == UserRole.SELLER) {
+            throw new ApiException(ErrorCode.ACCESS_DENIED);
+        }
+
+        OrderEntity order = orderRepository.findByIdForUpdate(orderId)
+            .orElseThrow(() -> new ApiException(ErrorCode.ORDER_NOT_FOUND));
+
+        verifyOrderOwnership(user, order);
+        OrderStatus nextStatus = apiMapper.toDomainOrderStatus(request.getNextStatus());
+        validateStateTransition(order.getStatus(), nextStatus);
+
+        order.setStatus(nextStatus);
         OrderEntity saved = orderRepository.save(order);
         return apiMapper.toOrderResponse(saved);
     }
@@ -404,6 +460,24 @@ public class OrderService {
             aggregated.merge(item.getProductId(), item.getQuantity(), Integer::sum);
         }
         return aggregated;
+    }
+
+    private void validateStateTransition(OrderStatus from, OrderStatus to) {
+        boolean allowed = switch (from) {
+            case CREATED -> to == OrderStatus.PAYMENT_PENDING;
+            case PAYMENT_PENDING -> to == OrderStatus.PAID;
+            case PAID -> to == OrderStatus.SHIPPED;
+            case SHIPPED -> to == OrderStatus.COMPLETED;
+            default -> false;
+        };
+
+        if (!allowed) {
+            throw new ApiException(
+                ErrorCode.INVALID_STATE_TRANSITION,
+                ErrorCode.INVALID_STATE_TRANSITION.defaultMessage(),
+                Map.of("from", from.name(), "to", to.name())
+            );
+        }
     }
 
     private record Pricing(BigDecimal discount, BigDecimal total, PromoCodeEntity promoCode) {

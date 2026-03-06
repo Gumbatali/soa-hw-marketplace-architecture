@@ -103,6 +103,10 @@ public class ApiMapper {
         return com.gumbatali.marketplace.generated.model.OrderStatus.valueOf(orderStatus.name());
     }
 
+    public OrderStatus toDomainOrderStatus(com.gumbatali.marketplace.generated.model.OrderStatus orderStatus) {
+        return OrderStatus.valueOf(orderStatus.name());
+    }
+
     private List<OrderItemResponse> mapOrderItems(List<OrderItemEntity> items) {
         return items.stream().map(item -> {
             OrderItemResponse response = new OrderItemResponse();
