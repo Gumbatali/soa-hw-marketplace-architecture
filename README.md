@@ -55,14 +55,14 @@ Swagger/контракт:
 
 Все команды ниже вставляются **без строк-комментариев `# ...`**.
 
-В начале фиксируем адрес API и создаём уникальную метку запуска. На её основе формируются логины и промокод, чтобы каждый прогон был изолирован и не конфликтовал с предыдущими данными в БД.
+В начале фиксируем адрес API и тестовые значения для сценария. Если запускаешь повторно, просто поменяй `SELLER`, `USERN` и `PROMO_CODE`.
 
 ```bash
 BASE="http://localhost:8081"
-SUF=$(date +%s)
-SELLER="seller_${SUF}"
-USERN="user_${SUF}"
+SELLER="seller1"
+USERN="user1"
 PASS="Strong123"
+PROMO_CODE="PROMO10"
 ```
 
 ### 2.1 Регистрация
@@ -108,11 +108,9 @@ PRODUCT_ID=$(echo "$PROD_RESP" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
 
 ### 2.4 Создание промокода
 
-Промокод также делаем уникальным для текущего прогона и создаём его от лица продавца.
+Создаём промокод от лица продавца.
 
 ```bash
-PROMO_CODE="PROMO${SUF}"
-
 PROMO_RESP=$(curl -s -X POST "$BASE/promo-codes" \
   -H "Authorization: Bearer $SELLER_TOKEN" \
   -H 'Content-Type: application/json' \
